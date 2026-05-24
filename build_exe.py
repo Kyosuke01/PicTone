@@ -14,31 +14,10 @@ def get_version():
         return f.read().strip()
 
 def sync_versions(version):
-    """Synchronizes version across files: pictone.py and web/index.html"""
+    """Synchronizes version across files: web/index.html"""
     print(f"Syncing version {version} in project files...")
     
-    # 1. Update pictone.py
-    pictone_path = "pictone.py"
-    if os.path.exists(pictone_path):
-        with open(pictone_path, "r", encoding="utf-8") as f:
-            content = f.read()
-        
-        # Replace CURRENT_VERSION = "..."
-        new_content = re.sub(
-            r'CURRENT_VERSION\s*=\s*["\'][^"\']+["\']',
-            f'CURRENT_VERSION = "{version}"',
-            content
-        )
-        if content != new_content:
-            with open(pictone_path, "w", encoding="utf-8", newline="\n") as f:
-                f.write(new_content)
-            print(f"  -> Updated version in {pictone_path}")
-        else:
-            print(f"  -> Version already up-to-date in {pictone_path}")
-    else:
-        print(f"  -> Warning: {pictone_path} not found!")
-
-    # 2. Update web/index.html
+    # Update web/index.html
     html_path = os.path.join("web", "index.html")
     if os.path.exists(html_path):
         with open(html_path, "r", encoding="utf-8") as f:
@@ -167,9 +146,27 @@ def build():
     # Prepare PyInstaller command
     output_name = f"PicTone_v{version}"
     
+    # Terminate running instances to prevent WinError 5 PermissionError during compilation
+    if sys.platform == "win32":
+        try:
+            exe_name = f"{output_name}.exe"
+            print(f"Terminating any running instances of {exe_name}...")
+            subprocess.run(["taskkill", "/F", "/IM", exe_name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception as e:
+            print(f"Warning: Could not terminate existing instances: {e}")
+
     # Ensure Executables folder exists
     os.makedirs("Executables", exist_ok=True)
     
+    # Hidden imports needed for win32com (desktop shortcut creation)
+    win32_hidden = [
+        "--hidden-import", "win32com",
+        "--hidden-import", "win32com.client",
+        "--hidden-import", "win32com.shell",
+        "--hidden-import", "pywintypes",
+        "--hidden-import", "pythoncom",
+    ]
+
     if py_exec == "pyinstaller":
         cmd = [
             "pyinstaller",
@@ -177,9 +174,11 @@ def build():
             "--onefile",
             "--icon=pictone.ico",
             "--add-data", "web;web",
+            "--add-data", "version.txt;.",
             "--distpath", "Executables",
             "--version-file", version_info_file,
             "-n", output_name,
+            *win32_hidden,
             "pictone.py"
         ]
     else:
@@ -189,9 +188,11 @@ def build():
             "--onefile",
             "--icon=pictone.ico",
             "--add-data", "web;web",
+            "--add-data", "version.txt;.",
             "--distpath", "Executables",
             "--version-file", version_info_file,
             "-n", output_name,
+            *win32_hidden,
             "pictone.py"
         ]
         

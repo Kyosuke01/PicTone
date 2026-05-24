@@ -10,7 +10,105 @@ import mimetypes
 import pystray
 from PIL import Image
 
-CURRENT_VERSION = "2.0.0"
+def load_version():
+    """Reads the version from version.txt (either bundled or in workspace)"""
+    try:
+        try:
+            # PyInstaller temp folder
+            base_path = sys._MEIPASS
+        except AttributeError:
+            base_path = os.path.dirname(os.path.abspath(__file__))
+        version_path = os.path.join(base_path, "version.txt")
+        if os.path.exists(version_path):
+            with open(version_path, "r", encoding="utf-8") as f:
+                return f.read().strip()
+    except Exception:
+        pass
+    return "unknown"
+
+CURRENT_VERSION = load_version()
+
+# ---------------------------------------------------------------------------
+# First-run setup: Documents/PicTone folder + desktop shortcut
+# ---------------------------------------------------------------------------
+
+def get_exe_path():
+    """Returns the path of the running .exe (or script in dev mode)."""
+    if getattr(sys, 'frozen', False):
+        return sys.executable
+    return os.path.abspath(__file__)
+
+def get_pictone_documents_dir():
+    """Returns %USERPROFILE%\\Documents\\PicTone."""
+    docs = os.path.join(os.path.expanduser('~'), 'Documents', 'PicTone')
+    return docs
+
+def create_desktop_shortcut(exe_path, icon_path):
+    """Creates a PicTone shortcut on the user's Desktop."""
+    try:
+        import win32com.client
+        desktop = os.path.join(os.path.expanduser('~'), 'Desktop')
+        shortcut_path = os.path.join(desktop, 'PicTone.lnk')
+        if os.path.exists(shortcut_path):
+            return  # Already exists
+        shell = win32com.client.Dispatch('WScript.Shell')
+        shortcut = shell.CreateShortcut(shortcut_path)
+        shortcut.TargetPath = exe_path
+        shortcut.WorkingDirectory = os.path.dirname(exe_path)
+        shortcut.Description = 'PicTone - Éditeur d\'images local'
+        if os.path.exists(icon_path):
+            shortcut.IconLocation = icon_path
+        shortcut.save()
+    except Exception:
+        pass  # Silent fail if win32com is unavailable
+
+def first_run_setup():
+    """Runs once on first launch: creates Documents/PicTone structure and desktop shortcut."""
+    pictone_dir = get_pictone_documents_dir()
+    marker = os.path.join(pictone_dir, '.initialized')
+
+    if os.path.exists(marker):
+        return  # Already initialized
+
+    # Create directory structure
+    os.makedirs(pictone_dir, exist_ok=True)
+    for sub in ('exports', 'logs'):
+        os.makedirs(os.path.join(pictone_dir, sub), exist_ok=True)
+
+    # Write a friendly README
+    readme_path = os.path.join(pictone_dir, 'README.txt')
+    readme_content = (
+        "Bienvenue dans PicTone !\n"
+        "========================\n\n"
+        "Ce dossier est utilisé par PicTone pour stocker vos données.\n\n"
+        "  exports/   -> Vos images exportées depuis PicTone\n"
+        "  logs/      -> Journaux d'application (diagnostics)\n\n"
+        f"Version installée : {CURRENT_VERSION}\n"
+    )
+    with open(readme_path, 'w', encoding='utf-8') as f:
+        f.write(readme_content)
+
+    # Write default config
+    config_path = os.path.join(pictone_dir, 'config.json')
+    import json
+    default_config = {
+        "version": CURRENT_VERSION,
+        "theme": "dark",
+        "language": "fr",
+        "export_folder": os.path.join(pictone_dir, 'exports')
+    }
+    with open(config_path, 'w', encoding='utf-8') as f:
+        json.dump(default_config, f, indent=2, ensure_ascii=False)
+
+    # Create desktop shortcut
+    exe_path = get_exe_path()
+    # Try to find the .ico next to the exe (bundled build)
+    icon_path = os.path.join(os.path.dirname(exe_path), 'pictone.ico')
+    create_desktop_shortcut(exe_path, icon_path)
+
+    # Write marker so we don't run again
+    with open(marker, 'w', encoding='utf-8') as f:
+        f.write(CURRENT_VERSION)
 
 # Fix potential MIME type issues on Windows machines
 mimetypes.init()
@@ -85,6 +183,8 @@ def setup_tray(port, server):
     icon.run()
 
 def main():
+    # Run first-time setup (no-op on subsequent launches)
+    first_run_setup()
     # Detect if running in Docker container
     running_in_docker = os.environ.get("RUNNING_IN_DOCKER") == "true"
     

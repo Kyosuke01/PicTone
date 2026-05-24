@@ -4,3 +4,5 @@
 #
 # Si vous souhaitez compiler l'exécutable localement avec PyInstaller :
 pyinstaller>=6.12.0
+# Requis pour la création du raccourci bureau (.lnk) au premier démarrage :
+pywin32
