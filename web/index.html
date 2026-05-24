@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PicTone</title>
+    <!-- Favicon -->
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
+    <!-- Google Fonts: Inter (Professional standard font) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <!-- Application Logic -->
+    <script src="app.js" defer></script>
+</head>
+<body>
+    <!-- Top Header -->
+    <header class="app-header">
+        <div class="header-left">
+            <img src="favicon.ico" alt="PicTone Logo" class="app-logo">
+            <span class="app-title">PicTone</span>
+            <span class="app-version">v<span id="current-version-text">2.0.0</span></span>
+        </div>
+        <div class="header-right">
+            <!-- Update banner integrated in the header to be clean and sober -->
+            <div id="update-banner" class="header-update-banner hidden">
+                <span class="update-icon">ℹ️</span>
+                <span>Mise à jour disponible (<span id="latest-version-text"></span>)</span>
+                <a id="update-link" href="#" target="_blank" class="header-update-link">Télécharger</a>
+                <button id="close-update-banner" class="header-close-btn">&times;</button>
+            </div>
+        </div>
+    </header>
+
+    <div class="app-body">
+        <!-- Main Workspace (Left) -->
+        <main class="workspace" id="app-workspace">
+            <!-- Empty State (Import Zone in center of workspace) -->
+            <div id="empty-state" class="empty-state">
+                <input type="file" id="file-input" accept="image/png, image/jpeg, image/jpg, image/bmp">
+                <div id="drop-zone" class="drop-zone">
+                    <div class="drop-zone-content">
+                        <svg class="upload-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                        </svg>
+                        <h3>Importer une image</h3>
+                        <p>Glissez-déposez un fichier ici, ou cliquez pour parcourir</p>
+                        <span class="format-info">Formats supportés : PNG, JPEG, BMP</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Active Viewer (Split / Side-by-side) -->
+            <div id="image-viewer" class="image-viewer hidden">
+                <div class="viewer-toolbar">
+                    <div class="viewer-tabs">
+                        <button id="tab-split" class="tab-btn active">Comparateur glissant</button>
+                        <button id="tab-side" class="tab-btn">Côte à côte</button>
+                    </div>
+                </div>
+
+                <!-- Mode 1: Split Slider -->
+                <div id="view-split" class="view-container split-view-container">
+                    <div class="comparison-slider" id="comparison-slider">
+                        <!-- Bottom Layer: Original -->
+                        <img id="img-original-split" class="image-layer original-layer" src="" alt="Original">
+                        
+                        <!-- Top Layer: Filtered (dynamically sized by JS) -->
+                        <div class="filtered-wrapper" id="filtered-wrapper">
+                            <canvas id="canvas-filtered-split" class="image-layer filtered-layer"></canvas>
+                        </div>
+                        
+                        <!-- Drag Handle -->
+                        <div class="slider-handle" id="slider-handle">
+                            <div class="handle-line"></div>
+                            <div class="handle-button">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l-3 3m0 0l3 3m-3-3h14m-3-3l3 3m0 0l-3 3" />
+                                </svg>
+                            </div>
+                            <div class="handle-line"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Mode 2: Side-by-Side -->
+                <div id="view-side" class="view-container side-view-container hidden">
+                    <div class="side-panel">
+                        <div class="panel-label">Original</div>
+                        <div class="panel-image-wrapper">
+                            <img id="img-original-side" src="" alt="Original">
+                        </div>
+                    </div>
+                    <div class="side-panel">
+                        <div class="panel-label">Modifié</div>
+                        <div class="panel-image-wrapper">
+                            <canvas id="canvas-filtered-side"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Sidebar / Properties & Filters (Right) -->
+        <aside class="sidebar">
+            <div class="sidebar-section">
+                <div class="section-title">Fichier</div>
+                <div class="file-info-box">
+                    <div class="info-row">
+                        <span class="info-label">Nom :</span>
+                        <span id="file-name-text" class="info-value">-</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Dimensions :</span>
+                        <span id="file-size-text" class="info-value">-</span>
+                    </div>
+                </div>
+                <!-- Small button to change image when already loaded -->
+                <button id="btn-change-image" class="btn btn-secondary btn-small" style="display: none;">
+                    Remplacer l'image
+                </button>
+            </div>
+
+            <div class="sidebar-section scrollable-section">
+                <div class="section-title">Filtres</div>
+                <div id="controls-section" class="controls-section disabled">
+                    <div class="filters-list">
+                        <button class="filter-item active" data-filter="Aucun">Aucun</button>
+                        <button class="filter-item" data-filter="Noir & Blanc">Noir & Blanc</button>
+                        <button class="filter-item" data-filter="Sépia">Sépia</button>
+                        <button class="filter-item" data-filter="Flou">Flou</button>
+                        <button class="filter-item" data-filter="Contours">Contours</button>
+                        <button class="filter-item" data-filter="Opacité">Opacité</button>
+                        <button class="filter-item" data-filter="Vert">Vert</button>
+                        <button class="filter-item" data-filter="Rouge">Rouge</button>
+                        <button class="filter-item" data-filter="Bleu">Bleu</button>
+                        <button class="filter-item" data-filter="Nuance de Gris">Nuances de Gris</button>
+                        <button class="filter-item" data-filter="Négatif">Négatif</button>
+                    </div>
+
+                    <!-- Filter parameters -->
+                    <div id="slider-blur-container" class="slider-group hidden">
+                        <div class="slider-header">
+                            <label for="slider-blur">Intensité du flou</label>
+                            <span id="blur-val">5 px</span>
+                        </div>
+                        <input type="range" id="slider-blur" min="1" max="50" step="0.5" value="5">
+                    </div>
+
+                    <div id="slider-opacity-container" class="slider-group hidden">
+                        <div class="slider-header">
+                            <label for="slider-opacity">Opacité</label>
+                            <span id="opacity-val">100%</span>
+                        </div>
+                        <input type="range" id="slider-opacity" min="0" max="255" step="1" value="255">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Footer actions -->
+            <div class="sidebar-footer">
+                <button id="btn-save" class="btn btn-primary" disabled>
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" class="btn-icon">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                    </svg>
+                    Sauvegarder l'image
+                </button>
+                <button id="btn-reset" class="btn btn-secondary" disabled>
+                    Réinitialiser
+                </button>
+            </div>
+        </aside>
+    </div>
+
+    <!-- Reusable Sobel Modal Dialogue -->
+    <div id="app-modal" class="modal-overlay hidden">
+        <div class="modal-container">
+            <div class="modal-header">
+                <span id="modal-title">Notification</span>
+                <button id="modal-close" class="modal-close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p id="modal-message">Message...</p>
+            </div>
+            <div class="modal-footer">
+                <button id="modal-btn-cancel" class="btn btn-secondary">Annuler</button>
+                <button id="modal-btn-confirm" class="btn btn-primary">Confirmer</button>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

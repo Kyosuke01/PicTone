@@ -1,0 +1,6 @@
+# Ce projet utilise uniquement la bibliothèque standard de Python pour s'exécuter.
+# Le traitement d'images est effectué à 100% en JavaScript côté client dans le navigateur.
+# Aucun paquet externe n'est donc requis pour faire tourner le serveur web.
+#
+# Si vous souhaitez compiler l'exécutable localement avec PyInstaller :
+pyinstaller>=6.12.0

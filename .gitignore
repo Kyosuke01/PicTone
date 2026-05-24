@@ -1,0 +1,59 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+build/
+dist/
+local/
+share/
+bin/
+lib/
+develop-eggs/
+eggs/
+docs/build/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+# PyInstaller spec files can be re-generated, and dist/build are temp folders
+*.spec
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+pyvenv.cfg
+.python-version
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+*~
+
+# Operating System Files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Local configuration
+.env
+.env.local
