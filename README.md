@@ -74,7 +74,7 @@ Pour créer l'exécutable autonome `pictone.exe` (sans avoir besoin d'installer 
 
 2. Exécutez la commande suivante depuis la racine du projet (`Applications/PicTone`) :
    ```bash
-   pyinstaller --noconsole --onefile --icon=pictone.ico --add-data "web;web" --distpath "..\..\Executables\PicTone" pictone.py
+   pyinstaller --noconsole --onefile --icon=pictone.ico --add-data "web;web" --distpath "Executables" pictone.py
    ```
 
 ### Explications des paramètres :
@@ -82,7 +82,7 @@ Pour créer l'exécutable autonome `pictone.exe` (sans avoir besoin d'installer 
 - `--onefile` : Package toute l'application (Python + HTML/CSS/JS) dans un seul fichier `.exe`.
 - `--icon=pictone.ico` : Associe l'icône personnalisée à l'exécutable Windows.
 - `--add-data "web;web"` : Incorpore le dossier `web/` (contenant le frontend) à l'intérieur du binaire (il sera extrait dans un dossier temporaire à l'exécution).
-- `--distpath "..."` : Indique le dossier de destination où l'exécutable compilé sera généré.
+- `--distpath "Executables"` : Indique le dossier de destination local (`Executables/`) où l'exécutable compilé sera généré.
 
 ---
 
