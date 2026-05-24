@@ -167,6 +167,17 @@ def build():
         "--hidden-import", "pythoncom",
     ]
 
+    # Hidden imports needed for pywebview (installer wizard)
+    webview_hidden = [
+        "--hidden-import", "webview",
+        "--hidden-import", "webview.platforms",
+        "--hidden-import", "webview.platforms.edgechromium",
+        "--hidden-import", "webview.platforms.winforms",
+        "--hidden-import", "clr",
+        "--hidden-import", "bottle",
+        "--collect-all", "webview",
+    ]
+
     if py_exec == "pyinstaller":
         cmd = [
             "pyinstaller",
@@ -175,10 +186,12 @@ def build():
             "--icon=pictone.ico",
             "--add-data", "web;web",
             "--add-data", "version.txt;.",
+            "--add-data", "installer.html;.",
             "--distpath", "Executables",
             "--version-file", version_info_file,
             "-n", output_name,
             *win32_hidden,
+            *webview_hidden,
             "pictone.py"
         ]
     else:
@@ -189,10 +202,12 @@ def build():
             "--icon=pictone.ico",
             "--add-data", "web;web",
             "--add-data", "version.txt;.",
+            "--add-data", "installer.html;.",
             "--distpath", "Executables",
             "--version-file", version_info_file,
             "-n", output_name,
             *win32_hidden,
+            *webview_hidden,
             "pictone.py"
         ]
         
