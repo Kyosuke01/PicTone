@@ -63,26 +63,29 @@ docker run -d -p 8080:8080 -e PORT=8080 --name pictone-app pictone
 
 ---
 
-## 📦 Compilation en `.exe` autonome
+## 📦 Compilation en `.exe` autonome (Automatisée)
 
-Pour créer l'exécutable autonome `pictone.exe` (sans avoir besoin d'installer Python chez l'utilisateur final) :
+Pour simplifier la compilation, synchroniser automatiquement la version sur tous les fichiers, et injecter les métadonnées Windows (version, description, icône, copyright) dans le fichier exécutable, un script de build automatique est fourni.
 
-1. Installez **PyInstaller** (si ce n'est pas déjà fait) :
-   ```bash
-   pip install pyinstaller
-   ```
+### Prérequis
+Installez **PyInstaller** et les dépendances requises :
+```bash
+pip install pyinstaller pystray Pillow
+```
 
-2. Exécutez la commande suivante depuis la racine du projet (`Applications/PicTone`) :
-   ```bash
-   pyinstaller --noconsole --onefile --icon=pictone.ico --add-data "web;web" --distpath "Executables" pictone.py
-   ```
+### Compiler le binaire
+Exécutez simplement le script `build_exe.py` depuis la racine du projet (`Applications/PicTone`) :
+```bash
+python build_exe.py
+```
 
-### Explications des paramètres :
-- `--noconsole` : Empêche l'ouverture d'une fenêtre d'invite de commande noire lors du lancement de l'application.
-- `--onefile` : Package toute l'application (Python + HTML/CSS/JS) dans un seul fichier `.exe`.
-- `--icon=pictone.ico` : Associe l'icône personnalisée à l'exécutable Windows.
-- `--add-data "web;web"` : Incorpore le dossier `web/` (contenant le frontend) à l'intérieur du binaire (il sera extrait dans un dossier temporaire à l'exécution).
-- `--distpath "Executables"` : Indique le dossier de destination local (`Executables/`) où l'exécutable compilé sera généré.
+Ce script va automatiquement :
+1. Lire la version actuelle définie dans `version.txt` (ex: `2.0.0`).
+2. Mettre à jour et synchroniser cette version dans `pictone.py` et `web/index.html`.
+3. Générer temporairement les métadonnées de version Windows requises par PyInstaller.
+4. Trouver le bon environnement Python ayant PyInstaller d'installé (gère intelligemment les machines multi-Python).
+5. Compiler l'exécutable sous le nom `PicTone_vX.Y.Z.exe` dans le dossier `Executables/` (ex: `Executables/PicTone_v2.0.0.exe`).
+6. Nettoyer proprement les répertoires et fichiers temporaires créés par la compilation (`build/` et les fichiers `.spec`).
 
 ---
 
@@ -119,7 +122,11 @@ git push origin v1.0.1
 ```
 
 ### Étape 4 : Compiler le nouvel exécutable
-Générez le binaire compilé avec la commande PyInstaller (voir section [Compilation](#-compilation-en-exe-autonome)).
+Générez le binaire compilé en exécutant simplement le script automatisé :
+```bash
+python build_exe.py
+```
+Cela synchronisera la version partout, générera le binaire versionné dans le dossier `Executables/` et nettoiera automatiquement les fichiers temporaires après la compilation.
 
 ### Étape 5 : Créer la Release sur GitHub et y attacher l'exécutable
 1. Allez sur votre dépôt GitHub sur le web.
