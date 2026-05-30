@@ -158,25 +158,7 @@ def build():
     # Ensure Executables folder exists
     os.makedirs("Executables", exist_ok=True)
     
-    # Hidden imports needed for win32com (desktop shortcut creation)
-    win32_hidden = [
-        "--hidden-import", "win32com",
-        "--hidden-import", "win32com.client",
-        "--hidden-import", "win32com.shell",
-        "--hidden-import", "pywintypes",
-        "--hidden-import", "pythoncom",
-    ]
 
-    # Hidden imports needed for pywebview (installer wizard)
-    webview_hidden = [
-        "--hidden-import", "webview",
-        "--hidden-import", "webview.platforms",
-        "--hidden-import", "webview.platforms.edgechromium",
-        "--hidden-import", "webview.platforms.winforms",
-        "--hidden-import", "clr",
-        "--hidden-import", "bottle",
-        "--collect-all", "webview",
-    ]
 
     if py_exec == "pyinstaller":
         cmd = [
@@ -186,12 +168,9 @@ def build():
             "--icon=pictone.ico",
             "--add-data", "web;web",
             "--add-data", "version.txt;.",
-            "--add-data", "installer.html;.",
             "--distpath", "Executables",
             "--version-file", version_info_file,
             "-n", output_name,
-            *win32_hidden,
-            *webview_hidden,
             "pictone.py"
         ]
     else:
@@ -202,12 +181,9 @@ def build():
             "--icon=pictone.ico",
             "--add-data", "web;web",
             "--add-data", "version.txt;.",
-            "--add-data", "installer.html;.",
             "--distpath", "Executables",
             "--version-file", version_info_file,
             "-n", output_name,
-            *win32_hidden,
-            *webview_hidden,
             "pictone.py"
         ]
         

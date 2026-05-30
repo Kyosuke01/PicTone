@@ -48,11 +48,6 @@ const opacityVal = document.getElementById('opacity-val');
 // Filter items (updated selector from .filter-card to .filter-item)
 const filterCards = document.querySelectorAll('.filter-item');
 
-// Update banner elements
-const updateBanner = document.getElementById('update-banner');
-const latestVersionText = document.getElementById('latest-version-text');
-const updateLink = document.getElementById('update-link');
-const closeUpdateBanner = document.getElementById('close-update-banner');
 
 // Modal DOM Elements
 const appModal = document.getElementById('app-modal');
@@ -114,9 +109,9 @@ appModal.addEventListener('click', (e) => {
 });
 
 /* ----------------------------------------------------
-   2. VERSION & UPDATES CHECK
+   2. VERSION CHECK
    ---------------------------------------------------- */
-async function checkUpdates() {
+async function checkVersion() {
     try {
         const verResponse = await fetch('/api/version');
         const verData = await verResponse.json();
@@ -125,26 +120,7 @@ async function checkUpdates() {
     } catch (e) {
         console.error("Impossible de récupérer la version locale :", e);
     }
-
-    try {
-        const githubUrl = "https://raw.githubusercontent.com/Kyosuke01/PicTone/main/version.txt";
-        const response = await fetch(githubUrl);
-        if (!response.ok) return;
-        const latestVer = (await response.text()).trim();
-
-        if (latestVer && latestVer !== currentVersion) {
-            latestVersionText.textContent = latestVer;
-            updateLink.href = "https://github.com/Kyosuke01/PicTone/releases/latest";
-            updateBanner.classList.remove('hidden');
-        }
-    } catch (e) {
-        console.log("Erreur lors de la vérification de mise à jour :", e);
-    }
 }
-
-closeUpdateBanner.addEventListener('click', () => {
-    updateBanner.classList.add('hidden');
-});
 
 /* ----------------------------------------------------
    3. DRAG & DROP & LOADING IMAGE
@@ -638,5 +614,5 @@ btnReset.addEventListener('click', async () => {
    7. INITIALIZATION
    ---------------------------------------------------- */
 document.addEventListener('DOMContentLoaded', () => {
-    checkUpdates();
+    checkVersion();
 });

@@ -10,15 +10,16 @@ PicTone est un éditeur d'images local moderne, sobre et performant. Le traiteme
 - `version.txt` : Fichier de version (lu dynamiquement par le serveur et l'API de mise à jour).
 - `web/` : Interface frontend (HTML, CSS, JS).
 - `build_exe.py` : Script de compilation automatisé pour générer le `.exe`.
+- `build_msix.py` : Script de génération du package pour le Microsoft Store.
 
 ---
 
 ## 💻 Développement et Utilisation
 
 ### Mode développement (local)
-1. Installez les dépendances :
+1. Installez les dépendances via le fichier requirements :
    ```bash
-   pip install pystray Pillow pywin32
+   pip install -r requirements.txt
    ```
 2. Lancez l'application :
    ```bash
@@ -38,25 +39,31 @@ PicTone est un éditeur d'images local moderne, sobre et performant. Le traiteme
 
 ---
 
-## 📦 Compilation en `.exe`
+## 📦 Compilation en `.exe` (Optionnelle)
 
-Pour générer un fichier exécutable autonome pour Windows :
+*Note : `build_exe.py` est utilisé en arrière-plan par `build_msix.py`. Vous n'avez normalement pas besoin de vous en soucier.*
 
-1. Installez PyInstaller :
-   ```bash
-   pip install pyinstaller
-   ```
-2. Lancez le script de build :
-   ```bash
-   python build_exe.py
-   ```
-   L'exécutable final sera généré dans le dossier `Executables/` sous le nom `PicTone_v[version].exe`.
+Si vous souhaitez exceptionnellement générer uniquement un exécutable `.exe` autonome (hors Store) :
+```bash
+python build_exe.py
+```
+L'exécutable final sera généré dans le dossier `Executables/` sous le nom `PicTone_v[version].exe`.
 
 ---
 
-## 🚀 Mise à jour et Versioning
+## 🚀 Déploiement sur le Microsoft Store
 
-Pour publier une nouvelle version :
+Le projet est conçu pour être distribué et mis à jour exclusivement via le **Microsoft Store**. 
+
+**⚠️ Prérequis :** Le **Windows SDK** doit être installé sur votre ordinateur pour que le script puisse empaqueter l'application. ([Lien de téléchargement](https://developer.microsoft.com/fr-fr/windows/downloads/windows-sdk/) - Lors de l'installation, cochez uniquement *"Windows App Certification Kit"* et *"Windows SDK Signing Tools"*).
+
+Pour préparer une nouvelle version destinée au Store :
+
 1. Modifiez la version dans `version.txt`.
-2. Lancez `python build_exe.py` pour synchroniser et compiler.
-3. Publiez sur GitHub avec un Tag correspondant (ex: `v2.0.0`) et joignez l'exécutable compilé à la Release.
+2. Lancez le script de génération du package :
+   ```bash
+   python build_msix.py
+   ```
+3. Le script s'occupe désormais de tout (compilation, génération des assets, création du manifeste, et empaquetage `makeappx` si le SDK Windows est installé).
+4. Récupérez directement votre fichier final `PicTone_v[version].msix` dans le dossier `Executables/`.
+5. Uploadez le fichier `.msix` sur votre tableau de bord Microsoft Store. Le Store s'occupera automatiquement des mises à jour pour les utilisateurs.
