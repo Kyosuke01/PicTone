@@ -1,8 +1,12 @@
-# Ce projet utilise uniquement la bibliothèque standard de Python pour s'exécuter.
-# Le traitement d'images est effectué à 100% en JavaScript côté client dans le navigateur.
-# Aucun paquet externe n'est donc requis pour faire tourner le serveur web.
+# PicTone — Dépendances Python
 #
-# Si vous souhaitez compiler l'exécutable localement avec PyInstaller :
+# Le traitement d'images est effectué à 100% en JavaScript côté client.
+# pywebview ouvre une vraie fenêtre native Windows via WebView2 (Edge Embedded),
+# sans serveur HTTP externe visible par l'utilisateur.
+#
+# Installation des dépendances de développement :
+#   pip install -r requirements.txt
+
 pyinstaller>=6.12.0
-pystray
 Pillow
+pywebview>=5.0

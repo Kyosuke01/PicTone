@@ -1,0 +1,9 @@
+{
+  "pythonVersion": "3.14",
+  "pythonPlatform": "Windows",
+  "venvPath": "C:/Users/aussa/AppData/Local/Programs/Python/Python314",
+  "pythonPath": "C:/Users/aussa/AppData/Local/Programs/Python/Python314/python.exe",
+  "typeCheckingMode": "off",
+  "reportMissingModuleSource": "none",
+  "reportMissingImports": "none"
+}

@@ -1,18 +1,8 @@
 import os
 import sys
 import time
-import json
-import shutil
-import socket
-import subprocess
-import webbrowser
-import threading
-import http.server
-import socketserver
-import mimetypes
-import pystray
-from PIL import Image
-
+import base64
+import webview  # type: ignore[import-untyped]
 
 
 # ---------------------------------------------------------------------------
@@ -39,9 +29,9 @@ def log_error(msg):
 def load_version():
     """Reads the version from version.txt (bundled or in workspace)."""
     try:
-        try:
-            base_path = sys._MEIPASS
-        except AttributeError:
+        if hasattr(sys, "_MEIPASS"):
+            base_path = getattr(sys, "_MEIPASS")
+        else:
             base_path = os.path.dirname(os.path.abspath(__file__))
         version_path = os.path.join(base_path, "version.txt")
         if os.path.exists(version_path):
@@ -58,86 +48,68 @@ CURRENT_VERSION = load_version()
 # Paths
 # ---------------------------------------------------------------------------
 
-def get_exe_path():
-    """Returns the path of the running .exe (or script in dev mode)."""
-    if getattr(sys, 'frozen', False):
-        return sys.executable
-    return os.path.abspath(__file__)
-
 def get_resource_path(relative_path):
     """Returns absolute path for a bundled resource (PyInstaller or dev)."""
-    try:
-        base_path = sys._MEIPASS
-    except AttributeError:
+    if hasattr(sys, "_MEIPASS"):
+        base_path = getattr(sys, "_MEIPASS")
+    else:
         base_path = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(base_path, relative_path)
 
 
-
-
-
 # ---------------------------------------------------------------------------
-# MIME types
+# Python API exposed to JavaScript via pywebview
 # ---------------------------------------------------------------------------
 
-mimetypes.init()
-mimetypes.add_type("application/javascript", ".js")
-mimetypes.add_type("text/css", ".css")
-mimetypes.add_type("image/svg+xml", ".svg")
+class PicToneAPI:
+    """Methods callable from JavaScript via window.pywebview.api.<method>()"""
 
+    def __init__(self):
+        self.window = None
 
-# ---------------------------------------------------------------------------
-# HTTP server
-# ---------------------------------------------------------------------------
+    def get_version(self):
+        return CURRENT_VERSION
 
-def find_free_port():
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.bind(("127.0.0.1", 0))
-    port = s.getsockname()[1]
-    s.close()
-    return port
+    def save_file(self, data_url, filename):
+        if not self.window:
+            return False
+        
+        # Determine file type filter based on extension
+        file_ext = filename.split(".")[-1].lower() if "." in filename else "png"
+        if file_ext == "jpg":
+            file_ext = "jpeg"
+        
+        file_types = (f"Fichier {file_ext.upper()} (*.{file_ext})", "Tous les fichiers (*.*)")
+        
+        # Open native save file dialog
+        file_path = self.window.create_file_dialog(
+            dialog_type=webview.SAVE_DIALOG,
+            save_filename=filename,
+            file_types=file_types
+        )
+        
+        if not file_path:
+            # User cancelled the dialog
+            return False
 
-
-class CustomHandler(http.server.SimpleHTTPRequestHandler):
-    def log_message(self, format, *args):
-        pass  # Silence HTTP logs
-
-    def do_GET(self):
-        if self.path == "/api/version":
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.end_headers()
-            self.wfile.write(f'{{"version": "{CURRENT_VERSION}"}}'.encode("utf-8"))
-        else:
-            super().do_GET()
-
-
-# ---------------------------------------------------------------------------
-# System tray
-# ---------------------------------------------------------------------------
-
-def setup_tray(port, server):
-    try:
-        icon_path = get_resource_path(os.path.join("web", "favicon.ico"))
-        image = Image.open(icon_path)
-    except Exception:
-        image = Image.new("RGB", (64, 64), color=(0, 122, 204))
-
-    def on_open(icon, item):
-        webbrowser.open(f"http://127.0.0.1:{port}/")
-
-    def on_exit(icon, item):
-        icon.stop()
-        threading.Thread(target=server.shutdown).start()
-        os._exit(0)
-
-    menu = pystray.Menu(
-        pystray.MenuItem("Ouvrir PicTone", on_open, default=True),
-        pystray.MenuItem("Quitter", on_exit),
-    )
-    icon = pystray.Icon("pictone", image, title="PicTone", menu=menu)
-    icon.run()
+        if isinstance(file_path, (list, tuple)):
+            if len(file_path) > 0:
+                file_path = file_path[0]
+            else:
+                return False
+            
+        try:
+            # Parse base64 data URL
+            header, base64_data = data_url.split(",", 1)
+            file_bytes = base64.b64decode(base64_data)
+            
+            # Write to selected file path
+            with open(file_path, "wb") as f:
+                f.write(file_bytes)
+            return True
+        except Exception as e:
+            log_error(f"Error saving file via native dialog: {str(e)}")
+            return False
 
 
 # ---------------------------------------------------------------------------
@@ -145,41 +117,38 @@ def setup_tray(port, server):
 # ---------------------------------------------------------------------------
 
 def main():
+    # Docker / headless mode kept for legacy CI compatibility
     running_in_docker = os.environ.get("RUNNING_IN_DOCKER") == "true"
-
     if running_in_docker:
-        host = "0.0.0.0"
-        port = int(os.environ.get("PORT", 8000))
-    else:
-        host = "127.0.0.1"
-        port = find_free_port()
+        print("PicTone: mode Docker détecté — fenêtre native non disponible.")
+        print("Utilisez l'image Docker pour un accès via navigateur.")
+        return
 
-    web_dir = get_resource_path("web")
+    index_path = get_resource_path(os.path.join("web", "index.html"))
 
-    class SafeHandler(CustomHandler):
-        def __init__(self, *args, **kwargs):
-            super().__init__(*args, directory=web_dir, **kwargs)
+    api = PicToneAPI()
 
-    socketserver.TCPServer.allow_reuse_address = True
-    server = socketserver.TCPServer((host, port), SafeHandler)
+    icon_path = get_resource_path("pictone.ico")
 
-    if running_in_docker:
-        print(f"PicTone est en cours d'exécution dans Docker.")
-        print(f"Ouvrez votre navigateur sur : http://localhost:{port}")
-        try:
-            server.serve_forever()
-        except KeyboardInterrupt:
-            pass
-        finally:
-            server.server_close()
-    else:
-        server_thread = threading.Thread(target=server.serve_forever, daemon=True)
-        server_thread.start()
+    window = webview.create_window(
+        title=f"PicTone  —  v{CURRENT_VERSION}",
+        url=index_path,
+        js_api=api,
+        width=1300,
+        height=820,
+        min_size=(960, 640),
+        resizable=True,
+    )
 
-        url = f"http://127.0.0.1:{port}/"
-        threading.Thread(target=lambda: (time.sleep(0.5), webbrowser.open(url)), daemon=True).start()
+    api.window = window
 
-        setup_tray(port, server)
+    # http_server=True est requis pour que WebView2 charge correctement
+    # les fichiers locaux (CSS, JS, images) sans erreur de sécurité file://
+    # icon= applique l'icône de la fenêtre native (barre de titre + barre des tâches)
+    webview.start(http_server=True, private_mode=False, icon=icon_path)
+
+    # Quand webview.start() retourne, la fenêtre a été fermée — on quitte proprement
+    os._exit(0)
 
 
 if __name__ == "__main__":

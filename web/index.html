@@ -2,69 +2,83 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PicTone</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>PicTone — Éditeur d'images</title>
+    <meta name="description" content="PicTone est un éditeur d'images local et performant pour Windows, offrant filtres, dessin, recadrage et export multi-formats.">
     <!-- Favicon -->
     <link rel="icon" type="image/x-icon" href="favicon.ico">
-    <!-- Google Fonts: Inter (Professional standard font) -->
+    <!-- Google Fonts: Inter -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
-    <!-- Application Logic -->
     <script src="app.js" defer></script>
 </head>
 <body>
-    <!-- Top Header -->
-    <header class="app-header">
-        <div class="header-left">
-            <img src="favicon.ico" alt="PicTone Logo" class="app-logo">
-            <span class="app-title">PicTone</span>
-            <span class="app-version">v<span id="current-version-text">2.2.0</span></span>
-        </div>
-        <div class="header-right">
-        </div>
-    </header>
-
     <div class="app-body">
-        <!-- Main Workspace (Left) -->
+        <!-- Main Workspace -->
         <main class="workspace" id="app-workspace">
-            <!-- Empty State (Import Zone in center of workspace) -->
+            <!-- Empty State -->
             <div id="empty-state" class="empty-state">
-                <input type="file" id="file-input" accept="image/png, image/jpeg, image/jpg, image/bmp">
+                <input type="file" id="file-input" accept="image/png, image/jpeg, image/jpg, image/bmp, image/webp, image/gif">
                 <div id="drop-zone" class="drop-zone">
                     <div class="drop-zone-content">
                         <svg class="upload-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
                         </svg>
-                        <h3>Importer une image</h3>
+                        <h1>Importer une image</h1>
                         <p>Glissez-déposez un fichier ici, ou cliquez pour parcourir</p>
-                        <span class="format-info">Formats supportés : PNG, JPEG, BMP</span>
+                        <span class="format-info">PNG · JPEG · BMP · WebP · GIF</span>
+                        <span class="format-hint">Vous pouvez aussi coller une image (Ctrl+V)</span>
                     </div>
                 </div>
             </div>
 
-            <!-- Active Viewer (Split / Side-by-side) -->
+            <!-- Active Viewer -->
             <div id="image-viewer" class="image-viewer hidden">
                 <div class="viewer-toolbar">
                     <div class="viewer-tabs">
-                        <button id="tab-split" class="tab-btn active">Comparateur glissant</button>
-                        <button id="tab-side" class="tab-btn">Côte à côte</button>
+                        <button id="tab-edit" class="tab-btn active">Édition</button>
+                        <button id="tab-split" class="tab-btn">Comparateur</button>
+                    </div>
+                    <!-- Undo/Redo déplacés ici -->
+                    <div class="toolbar-group hidden" id="history-toolbar">
+                        <button id="btn-undo" class="toolbar-btn" title="Annuler le dessin ou la transformation (Ctrl+Z)" disabled>
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h10a5 5 0 010 10H9m-6-10l4-4M3 10l4 4"/></svg>
+                        </button>
+                        <button id="btn-redo" class="toolbar-btn" title="Rétablir le dessin ou la transformation (Ctrl+Y)" disabled>
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 10H11a5 5 0 000 10h4m6-10l-4-4m4 4l-4 4"/></svg>
+                        </button>
                     </div>
                 </div>
 
-                <!-- Mode 1: Split Slider -->
-                <div id="view-split" class="view-container split-view-container">
+                <!-- Mode 1: Édition (Simple Canvas View) -->
+                <div id="view-edit" class="view-container edit-view-container">
+                    <div class="image-edit-wrapper" id="image-edit-wrapper" style="position: relative; display: inline-block;">
+                        <!-- Image invisible de référence pour dimensionner le wrapper -->
+                        <img id="img-reference-edit" class="image-layer" src="" alt="Base" style="opacity: 0; pointer-events: none; display: block;">
+                        <canvas id="canvas-filtered-edit" class="image-layer" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;"></canvas>
+                        <!-- Drawing overlay — Edit view -->
+                        <canvas id="draw-canvas-edit" class="draw-canvas"></canvas>
+                    </div>
+                    <!-- Custom Scrollbars -->
+                    <div class="custom-scrollbar custom-scrollbar-h hidden">
+                        <div class="custom-scrollbar-thumb"></div>
+                    </div>
+                    <div class="custom-scrollbar custom-scrollbar-v hidden">
+                        <div class="custom-scrollbar-thumb"></div>
+                    </div>
+                </div>
+
+                <!-- Mode 2: Split Slider (Comparateur) -->
+                <div id="view-split" class="view-container split-view-container hidden">
                     <div class="comparison-slider" id="comparison-slider">
-                        <!-- Bottom Layer: Original -->
                         <img id="img-original-split" class="image-layer original-layer" src="" alt="Original">
-                        
-                        <!-- Top Layer: Filtered (dynamically sized by JS) -->
                         <div class="filtered-wrapper" id="filtered-wrapper">
                             <canvas id="canvas-filtered-split" class="image-layer filtered-layer"></canvas>
+                            <!-- Drawing overlay — Split view -->
+                            <canvas id="draw-canvas-split" class="draw-canvas"></canvas>
                         </div>
-                        
-                        <!-- Drag Handle -->
                         <div class="slider-handle" id="slider-handle">
                             <div class="handle-line"></div>
                             <div class="handle-button">
@@ -75,28 +89,53 @@
                             <div class="handle-line"></div>
                         </div>
                     </div>
+                    <!-- Custom Scrollbars -->
+                    <div class="custom-scrollbar custom-scrollbar-h hidden">
+                        <div class="custom-scrollbar-thumb"></div>
+                    </div>
+                    <div class="custom-scrollbar custom-scrollbar-v hidden">
+                        <div class="custom-scrollbar-thumb"></div>
+                    </div>
                 </div>
 
-                <!-- Mode 2: Side-by-Side -->
-                <div id="view-side" class="view-container side-view-container hidden">
-                    <div class="side-panel">
-                        <div class="panel-label">Original</div>
-                        <div class="panel-image-wrapper">
-                            <img id="img-original-side" src="" alt="Original">
-                        </div>
+                <!-- Crop Overlay (hidden by default) -->
+                <div id="crop-overlay" class="crop-overlay hidden">
+                    <div id="crop-selection" class="crop-selection">
+                        <div class="crop-edge crop-edge-n" data-pos="n"></div>
+                        <div class="crop-edge crop-edge-s" data-pos="s"></div>
+                        <div class="crop-edge crop-edge-e" data-pos="e"></div>
+                        <div class="crop-edge crop-edge-w" data-pos="w"></div>
+                        <div class="crop-handle crop-handle-nw" data-pos="nw"></div>
+                        <div class="crop-handle crop-handle-ne" data-pos="ne"></div>
+                        <div class="crop-handle crop-handle-sw" data-pos="sw"></div>
+                        <div class="crop-handle crop-handle-se" data-pos="se"></div>
+                        <div class="crop-grid"></div>
                     </div>
-                    <div class="side-panel">
-                        <div class="panel-label">Modifié</div>
-                        <div class="panel-image-wrapper">
-                            <canvas id="canvas-filtered-side"></canvas>
+                    <div class="crop-toolbar">
+                        <button id="btn-crop-apply" class="btn btn-primary btn-small">✓ Recadrer</button>
+                        <button id="btn-crop-cancel" class="btn btn-secondary btn-small">✕ Annuler</button>
+                    </div>
+                </div>
+
+                <!-- Panneau des Couches de filtres Flottant -->
+                <div id="filter-layers-panel" class="filter-layers-panel hidden">
+                    <div class="panel-header">
+                        <span>Couches</span>
+                        <button id="btn-toggle-layers-panel" class="panel-toggle-btn" title="Réduire">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                        </button>
+                    </div>
+                    <div id="filter-layers-body" class="panel-body-content">
+                        <div id="filter-layers-list" class="filter-layers-list">
                         </div>
                     </div>
                 </div>
             </div>
         </main>
 
-        <!-- Sidebar / Properties & Filters (Right) -->
+        <!-- Sidebar -->
         <aside class="sidebar">
+            <!-- File Info Section -->
             <div class="sidebar-section">
                 <div class="section-title">Fichier</div>
                 <div class="file-info-box">
@@ -109,18 +148,24 @@
                         <span id="file-size-text" class="info-value">-</span>
                     </div>
                 </div>
-                <!-- Small button to change image when already loaded -->
                 <button id="btn-change-image" class="btn btn-secondary btn-small" style="display: none;">
                     Remplacer l'image
                 </button>
             </div>
 
-            <div class="sidebar-section scrollable-section">
-                <div class="section-title">Filtres</div>
+            <!-- Sidebar Tab Switcher -->
+            <div class="sidebar-tabs">
+                <button class="sidebar-tab active" data-panel="panel-filters" id="stab-filters">Filtres</button>
+                <button class="sidebar-tab" data-panel="panel-draw" id="stab-draw">Dessin</button>
+                <button class="sidebar-tab" data-panel="panel-transform" id="stab-transform">Transformer</button>
+            </div>
+
+            <!-- Panel: Filters -->
+            <div id="panel-filters" class="sidebar-panel active scrollable-section">
                 <div id="controls-section" class="controls-section disabled">
                     <div class="filters-list">
                         <button class="filter-item active" data-filter="Aucun">Aucun</button>
-                        <button class="filter-item" data-filter="Noir & Blanc">Noir & Blanc</button>
+                        <button class="filter-item" data-filter="Noir & Blanc">Noir &amp; Blanc</button>
                         <button class="filter-item" data-filter="Sépia">Sépia</button>
                         <button class="filter-item" data-filter="Flou">Flou</button>
                         <button class="filter-item" data-filter="Contours">Contours</button>
@@ -130,13 +175,18 @@
                         <button class="filter-item" data-filter="Bleu">Bleu</button>
                         <button class="filter-item" data-filter="Nuance de Gris">Nuances de Gris</button>
                         <button class="filter-item" data-filter="Négatif">Négatif</button>
+                        <button class="filter-item" data-filter="Vivid">Vivid</button>
+                        <button class="filter-item" data-filter="Cinématique">Cinématique</button>
+                        <button class="filter-item" data-filter="Aquarelle">Aquarelle</button>
                     </div>
 
-                    <!-- Filter parameters -->
                     <div id="slider-blur-container" class="slider-group hidden">
                         <div class="slider-header">
                             <label for="slider-blur">Intensité du flou</label>
-                            <span id="blur-val">5 px</span>
+                            <div class="input-unit-wrapper">
+                                <input type="number" id="input-blur" class="val-input" min="1" max="50" step="0.5" value="5">
+                                <span class="input-unit">px</span>
+                            </div>
                         </div>
                         <input type="range" id="slider-blur" min="1" max="50" step="0.5" value="5">
                     </div>
@@ -144,29 +194,201 @@
                     <div id="slider-opacity-container" class="slider-group hidden">
                         <div class="slider-header">
                             <label for="slider-opacity">Opacité</label>
-                            <span id="opacity-val">100%</span>
+                            <div class="input-unit-wrapper">
+                                <input type="number" id="input-opacity" class="val-input" min="0" max="100" step="1" value="100">
+                                <span class="input-unit">%</span>
+                            </div>
                         </div>
                         <input type="range" id="slider-opacity" min="0" max="255" step="1" value="255">
+                    </div>
+
+                    <!-- Adjustments -->
+                    <div class="adjustments-section">
+                        <div class="slider-group">
+                            <div class="slider-header">
+                                <label for="slider-brightness">Luminosité</label>
+                                <input type="number" id="input-brightness" class="val-input" min="-100" max="100" step="1" value="0">
+                            </div>
+                            <input type="range" id="slider-brightness" min="-100" max="100" step="1" value="0">
+                        </div>
+                        <div class="slider-group">
+                            <div class="slider-header">
+                                <label for="slider-contrast">Contraste</label>
+                                <input type="number" id="input-contrast" class="val-input" min="-100" max="100" step="1" value="0">
+                            </div>
+                            <input type="range" id="slider-contrast" min="-100" max="100" step="1" value="0">
+                        </div>
+                        <div class="slider-group">
+                            <div class="slider-header">
+                                <label for="slider-saturation">Saturation</label>
+                                <input type="number" id="input-saturation" class="val-input" min="-100" max="100" step="1" value="0">
+                            </div>
+                            <input type="range" id="slider-saturation" min="-100" max="100" step="1" value="0">
+                        </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Footer actions -->
+            <!-- Panel: Draw -->
+            <div id="panel-draw" class="sidebar-panel scrollable-section">
+                <div id="draw-controls" class="controls-section disabled">
+                    <div class="section-subtitle">Type de pinceau</div>
+                    <div class="brush-type-group">
+                        <button class="brush-btn active" data-brush="pen" id="brush-pen" title="Stylo fin">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+                            <span>Stylo</span>
+                        </button>
+                        <button class="brush-btn" data-brush="brush" id="brush-soft" title="Pinceau doux">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"/></svg>
+                            <span>Pinceau</span>
+                        </button>
+                        <button class="brush-btn" data-brush="marker" id="brush-marker" title="Marqueur épais">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                            <span>Marqueur</span>
+                        </button>
+                        <button class="brush-btn" data-brush="eraser" id="brush-eraser" title="Gomme">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20 20H7L3 16l9.586-9.586a2 2 0 012.828 0L20 11l-4 4 2.828 2.828A2 2 0 0120 20z"/></svg>
+                            <span>Gomme</span>
+                        </button>
+                    </div>
+
+                    <div class="slider-group">
+                        <div class="slider-header">
+                            <label for="brush-size-slider">Taille</label>
+                            <div class="input-unit-wrapper">
+                                <input type="number" id="input-brush-size" class="val-input" min="1" max="80" step="1" value="8">
+                                <span class="input-unit">px</span>
+                            </div>
+                        </div>
+                        <input type="range" id="brush-size-slider" min="1" max="80" step="1" value="8">
+                    </div>
+
+                    <div class="slider-group">
+                        <div class="slider-header">
+                            <label for="brush-opacity-slider">Opacité</label>
+                            <div class="input-unit-wrapper">
+                                <input type="number" id="input-brush-opacity" class="val-input" min="5" max="100" step="1" value="100">
+                                <span class="input-unit">%</span>
+                            </div>
+                        </div>
+                        <input type="range" id="brush-opacity-slider" min="5" max="100" step="1" value="100">
+                    </div>
+
+                    <div class="color-row">
+                        <label class="section-subtitle" for="brush-color-picker">Couleur</label>
+                        <div class="color-picker-wrapper">
+                            <input type="color" id="brush-color-picker" value="#e74c3c">
+                            <div class="color-presets">
+                                <div class="color-preset" data-color="#ffffff" style="background:#ffffff;" title="Blanc"></div>
+                                <div class="color-preset" data-color="#000000" style="background:#000000;" title="Noir"></div>
+                                <div class="color-preset" data-color="#e74c3c" style="background:#e74c3c;" title="Rouge"></div>
+                                <div class="color-preset" data-color="#f39c12" style="background:#f39c12;" title="Orange"></div>
+                                <div class="color-preset" data-color="#2ecc71" style="background:#2ecc71;" title="Vert"></div>
+                                <div class="color-preset" data-color="#3498db" style="background:#3498db;" title="Bleu"></div>
+                                <div class="color-preset" data-color="#9b59b6" style="background:#9b59b6;" title="Violet"></div>
+                                <div class="color-preset" data-color="#f1c40f" style="background:#f1c40f;" title="Jaune"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="draw-actions">
+                        <button id="btn-clear-draw" class="btn btn-secondary btn-small">Effacer le dessin</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Panel: Transform -->
+            <div id="panel-transform" class="sidebar-panel scrollable-section">
+                <div id="transform-controls" class="controls-section disabled">
+
+                    <div class="section-subtitle">Rotation</div>
+
+
+                    <div class="slider-group">
+                        <div class="slider-header">
+                            <label for="slider-rotation">Rotation libre</label>
+                            <div class="input-unit-wrapper">
+                                <input type="number" id="input-rotation" class="val-input" min="-180" max="180" step="1" value="0">
+                                <span class="input-unit">°</span>
+                            </div>
+                        </div>
+                        <input type="range" id="slider-rotation" min="-180" max="180" step="1" value="0">
+                        <button id="btn-rotation-apply" class="btn btn-secondary btn-small hidden" style="margin-top:8px;">Appliquer la rotation</button>
+                    </div>
+
+                    <div class="separator"></div>
+                    <div class="section-subtitle">Retourner</div>
+                    <div class="flip-grid">
+                        <button class="transform-btn" id="btn-flip-h" title="Miroir horizontal">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7h12M8 12h12M8 17h12M4 7h.01M4 12h.01M4 17h.01"/></svg>
+                            Horizontal
+                        </button>
+                        <button class="transform-btn" id="btn-flip-v" title="Miroir vertical">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 8h16M4 16h16M4 12h.01M12 4v.01M12 20v.01"/></svg>
+                            Vertical
+                        </button>
+                    </div>
+
+                    <div class="separator"></div>
+                    <div class="section-subtitle">Recadrer</div>
+                    <button id="btn-crop-start" class="btn btn-secondary btn-small">Sélectionner une zone…</button>
+
+                    <div class="separator"></div>
+                    <div class="section-subtitle">Redimensionner</div>
+                    <div class="resize-inputs">
+                        <div class="resize-field">
+                            <label for="resize-width">Largeur</label>
+                            <input type="number" id="resize-width" class="num-input" min="1" max="9999" placeholder="px">
+                        </div>
+                        <div class="resize-chain" id="resize-chain" title="Conserver le ratio">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+                        </div>
+                        <div class="resize-field">
+                            <label for="resize-height">Hauteur</label>
+                            <input type="number" id="resize-height" class="num-input" min="1" max="9999" placeholder="px">
+                        </div>
+                    </div>
+                    <label class="checkbox-label" style="margin-top:8px;">
+                        <input type="checkbox" id="resize-keep-ratio" checked>
+                        <span>Conserver le ratio</span>
+                    </label>
+                    <button id="btn-resize-apply" class="btn btn-secondary btn-small" style="margin-top:10px;">Appliquer</button>
+                </div>
+            </div>
+
+            <!-- Footer: Export -->
             <div class="sidebar-footer">
+                <div class="export-section">
+                    <div class="export-format-row">
+                        <div class="export-format-group">
+                            <button class="format-btn active" data-fmt="png" id="fmt-png">PNG</button>
+                            <button class="format-btn" data-fmt="jpeg" id="fmt-jpg">JPG</button>
+                            <button class="format-btn" data-fmt="webp" id="fmt-webp">WebP</button>
+                        </div>
+                    </div>
+                    <div id="quality-slider-container" class="slider-group hidden" style="margin-top:8px;">
+                        <div class="slider-header">
+                            <label for="export-quality">Qualité</label>
+                            <div class="input-unit-wrapper">
+                                <input type="number" id="input-export-quality" class="val-input" min="1" max="100" step="1" value="90">
+                                <span class="input-unit">%</span>
+                            </div>
+                        </div>
+                        <input type="range" id="export-quality" min="1" max="100" step="1" value="90">
+                    </div>
+                </div>
                 <button id="btn-save" class="btn btn-primary" disabled>
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" class="btn-icon">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
                     </svg>
-                    Sauvegarder l'image
+                    Exporter l'image
                 </button>
-                <button id="btn-reset" class="btn btn-secondary" disabled>
-                    Réinitialiser
-                </button>
+                <button id="btn-reset" class="btn btn-secondary" disabled>Réinitialiser</button>
             </div>
         </aside>
     </div>
 
-    <!-- Reusable Sobel Modal Dialogue -->
+    <!-- Modal -->
     <div id="app-modal" class="modal-overlay hidden">
         <div class="modal-container">
             <div class="modal-header">
@@ -182,5 +404,7 @@
             </div>
         </div>
     </div>
+    <!-- Custom Brush/Eraser Preview Cursor -->
+    <div id="brush-preview-cursor" class="brush-preview-cursor"></div>
 </body>
 </html>
