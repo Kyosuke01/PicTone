@@ -110,7 +110,10 @@ jobs:
           Stop-Process -Id $p.Id -Force
 
           $uninstaller = Join-Path $install "unins000.exe"
+          # Inno Setup relance une copie de son désinstalleur depuis %TEMP% : on attend le résultat.
           Start-Process -FilePath $uninstaller -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait
+          $deadline = (Get-Date).AddSeconds(90)
+          while ((Test-Path $app) -and ((Get-Date) -lt $deadline)) { Start-Sleep -Seconds 2 }
           if (Test-Path $app) { throw "La désinstallation n'a pas supprimé PicTone.exe." }
           Write-Host "Installation et désinstallation OK."
 
