@@ -75,7 +75,8 @@ jobs:
             if (Test-Path $log) { Get-Content $log }
             throw "PicTone s'est fermé au démarrage (code $($p.ExitCode))."
           }
-          Stop-Process -Id $p.Id -Force
+          # PyInstaller --onefile lance un processus enfant : on arrête toutes les instances.
+          Get-Process -Name PicTone -ErrorAction SilentlyContinue | Stop-Process -Force
           Write-Host "Démarrage OK."
 
       - name: Compiler l'installeur (Inno Setup)
@@ -107,7 +108,9 @@ jobs:
           $p = Start-Process -FilePath $app -PassThru
           Start-Sleep -Seconds 12
           if ($p.HasExited) { throw "PicTone installé s'est fermé au démarrage (code $($p.ExitCode))." }
-          Stop-Process -Id $p.Id -Force
+          # PyInstaller --onefile lance un processus enfant : sans ça, le fichier reste verrouillé.
+          Get-Process -Name PicTone -ErrorAction SilentlyContinue | Stop-Process -Force
+          Start-Sleep -Seconds 2
 
           $uninstaller = Join-Path $install "unins000.exe"
           # Inno Setup relance une copie de son désinstalleur depuis %TEMP% : on attend le résultat.
