@@ -4,12 +4,13 @@
 ; l'exécutable en place.
 ;
 ; Compilation : ISCC.exe /DAppVersion=3.1.0 installer\PicTone.iss
+; Prérequis : python build_exe.py (produit build_portable\PicTone_v<version>.exe)
 
 #ifndef AppVersion
   #define AppVersion "0.0.0"
 #endif
 #define AppName "PicTone"
-#define SourceExe "..\Executables\PicTone_v" + AppVersion + ".exe"
+#define SourceExe "..\build_portable\PicTone_v" + AppVersion + ".exe"
 
 [Setup]
 AppId={{5E1D7A0C-2B9F-4C3E-8A6D-19F4B7C2E085}
@@ -52,7 +53,7 @@ UninstallDisplayName={#AppName}
 
 ; Fichiers de sortie
 OutputDir=..\Executables
-OutputBaseFilename=PicTone_Setup_v{#AppVersion}
+OutputBaseFilename=PicTone_v{#AppVersion}
 Compression=lzma2/max
 SolidCompression=yes
 

@@ -10,6 +10,7 @@ __pycache__/
 build/
 dist/
 Executables/
+build_portable/
 local/
 share/
 bin/

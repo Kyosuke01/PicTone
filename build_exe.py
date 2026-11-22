@@ -1,6 +1,6 @@
 """Compile PicTone en un exécutable Windows autonome (PyInstaller).
 
-Usage : python build_exe.py  ->  Executables/PicTone_v<version>.exe
+Usage : python build_exe.py  ->  build_portable/PicTone_v<version>.exe (étape intermédiaire)
 """
 
 import os
@@ -10,7 +10,7 @@ import sys
 
 from build_common import APP_NAME, ROOT, get_version, version_tuple
 
-DIST_DIR = ROOT / "Executables"
+DIST_DIR = ROOT / "build_portable"  # intermédiaire : l'installeur est la seule sortie publiée
 VERSION_INFO_FILE = ROOT / "file_version_info.txt"
 
 
