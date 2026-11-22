@@ -41,9 +41,9 @@ Chaque push sur `main` qui modifie `version.txt` déclenche le workflow GitHub A
 
 ## 🧩 Installation (Windows)
 
-Téléchargez `PicTone_Setup_vX.Y.Z.exe` depuis la dernière Release et lancez-le. L'installation se fait pour l'utilisateur courant, sans droit administrateur :
-- raccourci dans le menu Démarrer ;
-- raccourci sur le Bureau si vous cochez l'option (décochée par défaut) ;
+Téléchargez `PicTone_Setup_vX.Y.Z.exe` depuis la dernière Release et lancez-le. L'assistant vous laisse choisir le dossier d'installation (par défaut dans votre profil, sans droit administrateur) et le nom du dossier du menu Démarrer. Options :
+- raccourci dans le menu Démarrer (coché par défaut) ;
+- raccourci sur le Bureau (décoché par défaut) ;
 - désinstallation depuis *Paramètres > Applications*.
 
 ---
