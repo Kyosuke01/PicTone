@@ -33,7 +33,7 @@ PicTone est un éditeur d'images local moderne, sobre et performant. Le traiteme
 
 ## 🏷️ Releases automatiques
 
-Chaque push sur `main` qui modifie `version.txt` déclenche le workflow GitHub Actions : compilation, test de démarrage, création de l'installeur, test d'installation et de désinstallation, puis création de la Release `vX.Y.Z` avec `PicTone_Setup_vX.Y.Z.exe` (installeur), `PicTone_vX.Y.Z.exe` (portable) et `SHA256SUMS.txt`. Une version déjà publiée est ignorée.
+Chaque push sur `main` qui modifie `version.txt` déclenche le workflow GitHub Actions : compilation, test de démarrage, création de l'installeur, test d'installation et de désinstallation, puis création de la Release `vX.Y.Z` avec **le seul fichier `PicTone_vX.Y.Z.exe`** (installeur) et `SHA256SUMS.txt`. Une version déjà publiée est ignorée.
 
 **Prérequis Windows :** le runtime [WebView2](https://go.microsoft.com/fwlink/p/?LinkId=2124703). En cas de plantage, un message s'affiche et le détail est dans `%LOCALAPPDATA%\PicTone\logs\crash_log.txt`.
 
@@ -41,7 +41,7 @@ Chaque push sur `main` qui modifie `version.txt` déclenche le workflow GitHub A
 
 ## 🧩 Installation (Windows)
 
-Téléchargez `PicTone_Setup_vX.Y.Z.exe` depuis la dernière Release et lancez-le. L'assistant vous laisse choisir le dossier d'installation (par défaut dans votre profil, sans droit administrateur) et le nom du dossier du menu Démarrer. Options :
+Téléchargez `PicTone_vX.Y.Z.exe` depuis la dernière Release et lancez-le. L'assistant vous laisse choisir le dossier d'installation (par défaut dans votre profil, sans droit administrateur) et le nom du dossier du menu Démarrer. Options :
 - raccourci dans le menu Démarrer (coché par défaut) ;
 - raccourci sur le Bureau (décoché par défaut) ;
 - désinstallation depuis *Paramètres > Applications*.

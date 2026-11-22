@@ -1,8 +1,7 @@
 name: Release
 
 # Publie une Release GitHub (tag vX.Y.Z) à chaque push sur main qui modifie version.txt.
-# Assets : PicTone_Setup_vX.Y.Z.exe (installeur), PicTone_vX.Y.Z.exe (portable, utilisé
-# par la mise à jour automatique) et SHA256SUMS.txt.
+# Assets publiés : PicTone_vX.Y.Z.exe (installeur) et SHA256SUMS.txt. Rien d'autre.
 on:
   push:
     branches: [main]
@@ -57,17 +56,17 @@ jobs:
         if: steps.exists.outputs.exists == 'false'
         run: python -m pip install -r requirements.txt
 
-      - name: Compiler l'exécutable portable
+      - name: Compiler l'exécutable (étape intermédiaire)
         if: steps.exists.outputs.exists == 'false'
         run: python build_exe.py
 
-      - name: Test de démarrage de l'exécutable
+      - name: Test de démarrage de l'exécutable (avant installeur)
         if: steps.exists.outputs.exists == 'false'
         shell: pwsh
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          $exe = "Executables/PicTone_v$env:VERSION.exe"
+          $exe = "build_portable/PicTone_v$env:VERSION.exe"
           $p = Start-Process -FilePath $exe -PassThru
           Start-Sleep -Seconds 12
           if ($p.HasExited) {
@@ -96,7 +95,7 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          $setup = "Executables/PicTone_Setup_v$env:VERSION.exe"
+          $setup = "Executables/PicTone_v$env:VERSION.exe"
           $install = Join-Path $env:LOCALAPPDATA "Programs\PicTone"
           $app = Join-Path $install "PicTone.exe"
           $shortcut = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\PicTone\PicTone.lnk"
@@ -136,7 +135,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${{ steps.version.outputs.tag }}" \
-            Executables/PicTone_Setup_v*.exe Executables/PicTone_v*.exe Executables/SHA256SUMS.txt \
+            Executables/PicTone_v*.exe Executables/SHA256SUMS.txt \
             --target "${{ github.sha }}" \
             --title "PicTone ${{ steps.version.outputs.tag }}" \
             --generate-notes

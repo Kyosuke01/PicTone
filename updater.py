@@ -4,7 +4,6 @@ import hashlib
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -77,43 +76,36 @@ def _download(url, destination):
 
 
 def install(update):
-    """Remplace l'exe en cours par la nouvelle version, puis le relance.
+    """Télécharge l'installeur, vérifie son empreinte, puis le lance en silencieux.
 
-    Lève une exception en cas d'échec ; l'appelant doit fermer l'application si tout va bien.
+    L'installeur remplace PicTone.exe dans le dossier courant ; l'app est ensuite relancée
+    par un script détaché. Lève une exception en cas d'échec avant le lancement.
     """
     if not can_self_update():
         raise RuntimeError("La mise à jour automatique n'est disponible que dans l'application Windows.")
 
     current_exe = os.path.abspath(sys.executable)
-    staged = current_exe + ".new"
-    old = current_exe + ".old"
+    app_dir = os.path.dirname(current_exe)
     work_dir = tempfile.mkdtemp(prefix="PicTone_update_")
-    downloaded = os.path.join(work_dir, "PicTone.exe")
+    setup = os.path.join(work_dir, update["exe_name"])
 
     expected = _expected_hash(update["sums_url"], update["exe_name"])
-    if _download(update["exe_url"], downloaded) != expected:
+    if _download(update["exe_url"], setup) != expected:
         raise RuntimeError("Le fichier téléchargé est corrompu (empreinte SHA256 différente).")
 
-    shutil.copyfile(downloaded, staged)
-    if os.path.exists(old):
-        os.remove(old)
-    # Sous Windows, un exe en cours d'exécution peut être renommé, pas écrasé.
-    os.replace(current_exe, old)
-    try:
-        os.replace(staged, current_exe)
-    except OSError:
-        os.replace(old, current_exe)  # retour arrière
-        raise
-
-    # Le script attend que l'ancien exe soit libéré, le supprime, relance l'app puis s'efface.
+    # Le script attend que cette app soit fermée (l'installeur ne peut pas remplacer un exe ouvert),
+    # lance l'installeur en silencieux dans le même dossier, puis relance PicTone et s'efface.
     script = os.path.join(work_dir, "apply_update.bat")
     with open(script, "w", encoding="mbcs", newline="\r\n") as f:
         f.write(
             "@echo off\n"
             ":wait\n"
+            f'tasklist /FI "PID eq {os.getpid()}" | find "{os.getpid()}" >nul\n'
+            "if errorlevel 1 goto run\n"
             "ping 127.0.0.1 -n 2 >nul\n"
-            f'del /f /q "{old}" >nul 2>&1\n'
-            f'if exist "{old}" goto wait\n'
+            "goto wait\n"
+            ":run\n"
+            f'"{setup}" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR="{app_dir}"\n'
             f'start "" "{current_exe}"\n'
             'del /f /q "%~f0" >nul 2>&1\n'
         )
