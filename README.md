@@ -1,14 +1,16 @@
 # PicTone
 
-PicTone est un éditeur d'images local moderne, sobre et performant. Le traitement s'effectue côté client (JavaScript) via l'API HTML5 Canvas, tandis qu'un serveur local Python gère l'hébergement et l'arrêt automatique.
+PicTone est un éditeur d'images local moderne, sobre et performant. Le traitement s'effectue côté client (JavaScript) via l'API HTML5 Canvas, dans une fenêtre native (pywebview / WebView2).
 
 ---
 
 ## 🛠️ Architecture du projet
 
-- `pictone.py` : Lanceur Python (serveur web local avec auto-extinction).
-- `version.txt` : Fichier de version (lu dynamiquement par le serveur et l'API de mise à jour).
+- `pictone.py` : Point d'entrée (fenêtre native pywebview, enregistrement, journal d'erreurs).
+- `version.txt` : Fichier de version (source unique de la version).
 - `web/` : Interface frontend (HTML, CSS, JS).
+- `build_common.py` : Utilitaires de build partagés.
+- `.github/workflows/release.yml` : Release GitHub automatique.
 - `build_exe.py` : Script de compilation automatisé pour générer le `.exe`.
 - `build_msix.py` : Script de génération du package pour le Microsoft Store.
 
@@ -26,16 +28,13 @@ PicTone est un éditeur d'images local moderne, sobre et performant. Le traiteme
    python pictone.py
    ```
 
-### Mode Docker
-1. Construisez l'image :
-   ```bash
-   docker build -t pictone .
-   ```
-2. Démarrez le conteneur :
-   ```bash
-   docker run -d -p 8000:8000 --name pictone-app pictone
-   ```
-   Accédez à l'application via `http://localhost:8000`.
+---
+
+## 🏷️ Releases automatiques
+
+Chaque push sur `main` qui modifie `version.txt` déclenche le workflow GitHub Actions : compilation, test de démarrage de l'exe, puis création de la Release `vX.Y.Z` avec `.exe`, `.msix` et `SHA256SUMS.txt`. Une version déjà publiée est ignorée.
+
+**Prérequis Windows :** le runtime [WebView2](https://go.microsoft.com/fwlink/p/?LinkId=2124703). En cas de plantage, un message s'affiche et le détail est dans `%LOCALAPPDATA%\PicTone\logs\crash_log.txt`.
 
 ---
 
