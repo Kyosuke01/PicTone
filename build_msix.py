@@ -175,7 +175,7 @@ def main():
                 "/o" # Overwrite if exists
             ], check=True)
             print("\n" + "="*50)
-            print("PACKAGING TERMINÉ AVEC SUCCÈS ! 🎉")
+            print("PACKAGING TERMINÉ AVEC SUCCÈS !")
             print(f"Ton fichier est prêt ici : {msix_output}")
             print("="*50)
         except subprocess.CalledProcessError:

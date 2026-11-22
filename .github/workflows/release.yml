@@ -15,6 +15,9 @@ concurrency:
 permissions:
   contents: write
 
+env:
+  PYTHONUTF8: "1"
+
 jobs:
   release:
     runs-on: windows-latest
