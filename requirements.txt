@@ -1,12 +1,11 @@
-# PicTone — Dépendances Python
+# PicTone — dépendances Python (Python 3.11 recommandé)
 #
-# Le traitement d'images est effectué à 100% en JavaScript côté client.
-# pywebview ouvre une vraie fenêtre native Windows via WebView2 (Edge Embedded),
-# sans serveur HTTP externe visible par l'utilisateur.
+# Le traitement d'images est fait en JavaScript (Canvas). pywebview ouvre une
+# fenêtre native via WebView2 ; Pillow ne sert qu'à build_msix.py.
 #
-# Installation des dépendances de développement :
 #   pip install -r requirements.txt
 
-pyinstaller>=6.12.0
-Pillow
-pywebview>=5.0
+pywebview==5.4
+pythonnet==3.0.5; sys_platform == "win32"
+pyinstaller==6.12.0
+Pillow==11.1.0

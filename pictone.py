@@ -1,69 +1,118 @@
+"""PicTone — éditeur d'images local (pywebview + WebView2)."""
+
+import base64
 import os
 import sys
+import tempfile
 import time
-import base64
-import webview  # type: ignore[import-untyped]
+import traceback
+
+APP_NAME = "PicTone"
 
 
 # ---------------------------------------------------------------------------
-# Error Logging
+# Chemins et version
 # ---------------------------------------------------------------------------
 
-def log_error(msg):
-    """Writes error messages to a crash log in LOCALAPPDATA."""
-    try:
-        local = os.environ.get("LOCALAPPDATA", os.path.expanduser("~"))
-        log_dir = os.path.join(local, "PicTone", "logs")
-        os.makedirs(log_dir, exist_ok=True)
-        log_file = os.path.join(log_dir, "crash_log.txt")
-        with open(log_file, "a", encoding="utf-8") as f:
-            f.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {msg}\n")
-    except Exception:
-        pass
+def resource_path(*parts):
+    """Chemin absolu d'une ressource embarquée (PyInstaller) ou du dépôt (dev)."""
+    base = getattr(sys, "_MEIPASS", None) or os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base, *parts)
 
-
-# ---------------------------------------------------------------------------
-# Version
-# ---------------------------------------------------------------------------
 
 def load_version():
-    """Reads the version from version.txt (bundled or in workspace)."""
+    """Lit version.txt (embarqué ou local). Renvoie 'unknown' en cas d'échec."""
     try:
-        if hasattr(sys, "_MEIPASS"):
-            base_path = getattr(sys, "_MEIPASS")
-        else:
-            base_path = os.path.dirname(os.path.abspath(__file__))
-        version_path = os.path.join(base_path, "version.txt")
-        if os.path.exists(version_path):
-            with open(version_path, "r", encoding="utf-8") as f:
-                return f.read().strip()
-    except Exception:
-        pass
-    return "unknown"
+        with open(resource_path("version.txt"), "r", encoding="utf-8") as f:
+            return f.read().strip() or "unknown"
+    except OSError:
+        return "unknown"
+
 
 CURRENT_VERSION = load_version()
 
 
 # ---------------------------------------------------------------------------
-# Paths
+# Journalisation et affichage des erreurs
 # ---------------------------------------------------------------------------
 
-def get_resource_path(relative_path):
-    """Returns absolute path for a bundled resource (PyInstaller or dev)."""
-    if hasattr(sys, "_MEIPASS"):
-        base_path = getattr(sys, "_MEIPASS")
-    else:
-        base_path = os.path.dirname(os.path.abspath(__file__))
-    return os.path.join(base_path, relative_path)
+def _log_candidates():
+    local = os.environ.get("LOCALAPPDATA")
+    if local:
+        yield os.path.join(local, APP_NAME, "logs")
+    yield os.path.join(tempfile.gettempdir(), APP_NAME)
+
+
+def log_error(msg):
+    """Écrit dans crash_log.txt et renvoie le chemin du fichier (ou None)."""
+    line = f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] v{CURRENT_VERSION}\n{msg}\n"
+    for directory in _log_candidates():
+        try:
+            os.makedirs(directory, exist_ok=True)
+            path = os.path.join(directory, "crash_log.txt")
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(line)
+            return path
+        except OSError:
+            continue
+    return None
+
+
+def show_error(message):
+    """Affiche une boîte de dialogue native (l'exe n'a pas de console)."""
+    try:
+        if sys.platform == "win32":
+            import ctypes
+            ctypes.windll.user32.MessageBoxW(0, message, APP_NAME, 0x10)  # MB_ICONERROR
+            return
+    except Exception:
+        pass
+    print(message, file=sys.stderr)
+
+
+def report_crash(exc_text):
+    log_path = log_error(exc_text)
+    where = f"\n\nDétails : {log_path}" if log_path else ""
+    show_error(f"{APP_NAME} a rencontré une erreur et doit se fermer.{where}")
 
 
 # ---------------------------------------------------------------------------
-# Python API exposed to JavaScript via pywebview
+# WebView2
+# ---------------------------------------------------------------------------
+
+WEBVIEW2_DOWNLOAD_URL = "https://go.microsoft.com/fwlink/p/?LinkId=2124703"
+_WEBVIEW2_GUID = "{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+
+
+def is_webview2_installed():
+    """Vérifie la présence du runtime WebView2 (toujours True hors Windows)."""
+    if sys.platform != "win32":
+        return True
+    try:
+        import winreg
+    except ImportError:
+        return True
+    keys = (
+        (winreg.HKEY_LOCAL_MACHINE, rf"SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{_WEBVIEW2_GUID}"),
+        (winreg.HKEY_LOCAL_MACHINE, rf"SOFTWARE\Microsoft\EdgeUpdate\Clients\{_WEBVIEW2_GUID}"),
+        (winreg.HKEY_CURRENT_USER, rf"Software\Microsoft\EdgeUpdate\Clients\{_WEBVIEW2_GUID}"),
+    )
+    for hive, key in keys:
+        try:
+            with winreg.OpenKey(hive, key) as handle:
+                version, _ = winreg.QueryValueEx(handle, "pv")
+                if version and version != "0.0.0.0":
+                    return True
+        except OSError:
+            continue
+    return False
+
+
+# ---------------------------------------------------------------------------
+# API exposée au JavaScript (window.pywebview.api.*)
 # ---------------------------------------------------------------------------
 
 class PicToneAPI:
-    """Methods callable from JavaScript via window.pywebview.api.<method>()"""
-
     def __init__(self):
         self.window = None
 
@@ -71,68 +120,57 @@ class PicToneAPI:
         return CURRENT_VERSION
 
     def save_file(self, data_url, filename):
-        if not self.window:
-            return False
-        
-        # Determine file type filter based on extension
-        file_ext = filename.split(".")[-1].lower() if "." in filename else "png"
-        if file_ext == "jpg":
-            file_ext = "jpeg"
-        
-        file_types = (f"Fichier {file_ext.upper()} (*.{file_ext})", "Tous les fichiers (*.*)")
-        
-        # Open native save file dialog
-        file_path = self.window.create_file_dialog(
-            dialog_type=webview.SAVE_DIALOG,
-            save_filename=filename,
-            file_types=file_types
-        )
-        
-        if not file_path:
-            # User cancelled the dialog
+        """Ouvre la boîte « Enregistrer sous » et écrit l'image décodée."""
+        if self.window is None:
             return False
 
-        if isinstance(file_path, (list, tuple)):
-            if len(file_path) > 0:
-                file_path = file_path[0]
-            else:
-                return False
-            
+        import webview
+
+        ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "png"
+        if ext == "jpg":
+            ext = "jpeg"
+        file_types = (f"Fichier {ext.upper()} (*.{ext})", "Tous les fichiers (*.*)")
+
+        save_dialog = getattr(getattr(webview, "FileDialog", None), "SAVE", None)
+        if save_dialog is None:
+            save_dialog = webview.SAVE_DIALOG
+
         try:
-            # Parse base64 data URL
-            header, base64_data = data_url.split(",", 1)
-            file_bytes = base64.b64decode(base64_data)
-            
-            # Write to selected file path
-            with open(file_path, "wb") as f:
-                f.write(file_bytes)
+            target = self.window.create_file_dialog(
+                dialog_type=save_dialog, save_filename=filename, file_types=file_types
+            )
+            if isinstance(target, (list, tuple)):
+                target = target[0] if target else None
+            if not target:
+                return False  # annulé par l'utilisateur
+
+            _, encoded = data_url.split(",", 1)
+            with open(target, "wb") as f:
+                f.write(base64.b64decode(encoded))
             return True
-        except Exception as e:
-            log_error(f"Error saving file via native dialog: {str(e)}")
+        except Exception:
+            log_error("Erreur lors de l'enregistrement :\n" + traceback.format_exc())
             return False
 
 
 # ---------------------------------------------------------------------------
-# Main
+# Point d'entrée
 # ---------------------------------------------------------------------------
 
 def main():
-    # Docker / headless mode kept for legacy CI compatibility
-    running_in_docker = os.environ.get("RUNNING_IN_DOCKER") == "true"
-    if running_in_docker:
-        print("PicTone: mode Docker détecté — fenêtre native non disponible.")
-        print("Utilisez l'image Docker pour un accès via navigateur.")
-        return
+    if not is_webview2_installed():
+        show_error(
+            "Le runtime Microsoft Edge WebView2 est requis pour lancer PicTone.\n\n"
+            f"Installez-le depuis :\n{WEBVIEW2_DOWNLOAD_URL}"
+        )
+        return 1
 
-    index_path = get_resource_path(os.path.join("web", "index.html"))
+    import webview
 
     api = PicToneAPI()
-
-    icon_path = get_resource_path("pictone.ico")
-
-    window = webview.create_window(
-        title=f"PicTone  —  v{CURRENT_VERSION}",
-        url=index_path,
+    api.window = webview.create_window(
+        title=f"{APP_NAME}  —  v{CURRENT_VERSION}",
+        url=resource_path("web", "index.html"),
         js_api=api,
         width=1300,
         height=820,
@@ -140,20 +178,22 @@ def main():
         resizable=True,
     )
 
-    api.window = window
+    # http_server=True : évite les restrictions file:// de WebView2.
+    # L'icône n'est passée que si le fichier existe (sinon WinForms plante).
+    start_kwargs = {"http_server": True, "private_mode": False}
+    icon_path = resource_path("pictone.ico")
+    if os.path.isfile(icon_path):
+        start_kwargs["icon"] = icon_path
 
-    # http_server=True est requis pour que WebView2 charge correctement
-    # les fichiers locaux (CSS, JS, images) sans erreur de sécurité file://
-    # icon= applique l'icône de la fenêtre native (barre de titre + barre des tâches)
-    webview.start(http_server=True, private_mode=False, icon=icon_path)
-
-    # Quand webview.start() retourne, la fenêtre a été fermée — on quitte proprement
-    os._exit(0)
+    webview.start(**start_kwargs)
+    return 0
 
 
 if __name__ == "__main__":
     try:
-        main()
-    except Exception as e:
-        import traceback
-        log_error("CRASH IN __main__:\n" + traceback.format_exc())
+        sys.exit(main())
+    except SystemExit:
+        raise
+    except BaseException:
+        report_crash(traceback.format_exc())
+        sys.exit(1)

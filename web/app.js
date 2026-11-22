@@ -77,7 +77,6 @@ const imageViewer       = document.getElementById('image-viewer');
 const btnSave           = document.getElementById('btn-save');
 const btnReset          = document.getElementById('btn-reset');
 const btnChangeImage    = document.getElementById('btn-change-image');
-const currentVersionText = document.getElementById('current-version-text');
 
 const fileNameText  = document.getElementById('file-name-text');
 const fileSizeText  = document.getElementById('file-size-text');
@@ -210,23 +209,6 @@ modalClose.addEventListener('click',      () => { if (modalResolver) modalResolv
 modalBtnCancel.addEventListener('click',  () => { if (modalResolver) modalResolver(false); });
 modalBtnConfirm.addEventListener('click', () => { if (modalResolver) modalResolver(true); });
 appModal.addEventListener('click', (e) => { if (e.target === appModal && modalResolver) modalResolver(false); });
-
-
-// ---------------------------------------------------------------------------
-// 4. VERSION
-// ---------------------------------------------------------------------------
-
-async function checkVersion() {
-    // Try pywebview API first (native window), then fallback to static HTML value
-    try {
-        if (window.pywebview && window.pywebview.api) {
-            const v = await window.pywebview.api.get_version();
-            if (v && v !== 'unknown') currentVersionText.textContent = v;
-        }
-    } catch (e) {
-        // In dev/browser mode, version stays as the static value injected in HTML
-    }
-}
 
 
 // ---------------------------------------------------------------------------
@@ -2455,14 +2437,7 @@ btnSave.addEventListener('click', () => {
     // Try native pywebview file dialog first, fallback to browser link download
     if (window.pywebview && window.pywebview.api && window.pywebview.api.save_file) {
         window.pywebview.api.save_file(dataUrl, filename)
-            .then(success => {
-                if (success) {
-                    console.log("File saved successfully via native dialog.");
-                } else {
-                    console.log("File save cancelled or failed.");
-                }
-            })
-            .catch(err => {
+                        .catch(err => {
                 console.error("Native save failed, falling back to link download:", err);
                 fallbackDownload(dataUrl, filename);
             });
@@ -2536,7 +2511,6 @@ btnReset.addEventListener('click', async () => {
 // ---------------------------------------------------------------------------
 
 document.addEventListener('DOMContentLoaded', () => {
-    checkVersion();
     updateHistoryButtons();
 
     // Set initial draw mode cursor off

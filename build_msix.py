@@ -5,21 +5,14 @@ import subprocess
 import glob
 from PIL import Image
 
+from build_common import get_version, version_tuple
+
 # --- CONFIGURATION MICROSOFT STORE ---
 # Identifiants exacts fournis par le Microsoft Partner Center
 IDENTITY_NAME = "Kyo.PicTone"
 PUBLISHER_ID = "CN=704264E0-3184-4166-B52C-A1B4EEB5FA57"
 PUBLISHER_DISPLAY_NAME = "Kyo_"
 # -----------------------------------
-
-def get_version():
-    """Reads the version from version.txt"""
-    version_file = "version.txt"
-    if not os.path.exists(version_file):
-        print(f"Error: {version_file} not found.")
-        sys.exit(1)
-    with open(version_file, "r", encoding="utf-8") as f:
-        return f.read().strip()
 
 def prepare_assets(build_dir):
     """Generates the required PNG assets from pictone.ico for the MSIX package"""
@@ -70,10 +63,7 @@ def prepare_assets(build_dir):
 def generate_manifest(build_dir, version):
     """Generates the AppxManifest.xml file"""
     # MSIX versions must be in x.y.z.0 format
-    parts = version.split('.')
-    while len(parts) < 4:
-        parts.append("0")
-    msix_version = ".".join(parts[:4])
+    msix_version = ".".join(map(str, version_tuple(version)))
 
     manifest_content = f"""<?xml version="1.0" encoding="utf-8"?>
 <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
@@ -189,7 +179,7 @@ def main():
             print(f"Ton fichier est prêt ici : {msix_output}")
             print("="*50)
         except subprocess.CalledProcessError:
-            print("Erreur lors de la génération du .msix par makeappx.")
+            sys.exit("Erreur lors de la génération du .msix par makeappx.")
     else:
         print(f"Le dossier '{build_dir}' contient tout le nécessaire pour le Microsoft Store.")
         print("Pour générer le fichier .msix final :")
