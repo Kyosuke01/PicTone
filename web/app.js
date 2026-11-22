@@ -2510,6 +2510,46 @@ btnReset.addEventListener('click', async () => {
 // 17. INITIALIZATION
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Mise à jour automatique
+// ---------------------------------------------------------------------------
+
+async function initUpdater() {
+    const banner = document.getElementById('update-banner');
+    const text = document.getElementById('update-text');
+    const btnInstall = document.getElementById('update-install');
+    const btnLater = document.getElementById('update-later');
+    const api = window.pywebview && window.pywebview.api;
+    if (!banner || !api || !api.check_update) return;
+
+    try {
+        const info = await api.check_update();
+        if (!info || !info.available) return;
+        text.textContent = `La version ${info.version} est disponible.`;
+        banner.hidden = false;
+    } catch (e) {
+        return;
+    }
+
+    btnLater.addEventListener('click', () => { banner.hidden = true; });
+    btnInstall.addEventListener('click', async () => {
+        btnInstall.disabled = true;
+        btnLater.disabled = true;
+        text.textContent = 'Téléchargement de la mise à jour…';
+        try {
+            const result = await api.install_update();
+            if (!result.ok) throw new Error(result.error);
+            text.textContent = 'Redémarrage…';
+        } catch (e) {
+            text.textContent = `Échec de la mise à jour : ${e.message}`;
+            btnInstall.disabled = false;
+            btnLater.disabled = false;
+        }
+    });
+}
+
+window.addEventListener('pywebviewready', initUpdater);
+
 document.addEventListener('DOMContentLoaded', () => {
     updateHistoryButtons();
 

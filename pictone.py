@@ -7,6 +7,8 @@ import tempfile
 import time
 import traceback
 
+import updater
+
 APP_NAME = "PicTone"
 
 
@@ -115,9 +117,32 @@ def is_webview2_installed():
 class PicToneAPI:
     def __init__(self):
         self.window = None
+        self._update = {"available": False}
 
     def get_version(self):
         return CURRENT_VERSION
+
+    def check_update(self):
+        """Renvoie {'available': bool, 'version': str} (jamais d'exception)."""
+        try:
+            self._update = updater.check(CURRENT_VERSION)
+        except Exception:
+            log_error("Vérification de mise à jour :\n" + traceback.format_exc())
+            self._update = {"available": False}
+        return {"available": self._update["available"], "version": self._update.get("version", "")}
+
+    def install_update(self):
+        """Installe la mise à jour trouvée, puis ferme l'app (le script la relance)."""
+        if not getattr(self, "_update", {}).get("available"):
+            return {"ok": False, "error": "Aucune mise à jour disponible."}
+        try:
+            updater.install(self._update)
+        except Exception as exc:
+            log_error("Installation de mise à jour :\n" + traceback.format_exc())
+            return {"ok": False, "error": str(exc)}
+        if self.window is not None:
+            self.window.destroy()
+        return {"ok": True}
 
     def save_file(self, data_url, filename):
         """Ouvre la boîte « Enregistrer sous » et écrit l'image décodée."""

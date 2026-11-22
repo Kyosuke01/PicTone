@@ -10,7 +10,6 @@ __pycache__/
 build/
 dist/
 Executables/
-MsixBuild/
 local/
 share/
 bin/

@@ -1,4 +1,4 @@
-"""Utilitaires partagés par build_exe.py et build_msix.py."""
+"""Utilitaires partagés par build_exe.py."""
 
 import re
 import sys
