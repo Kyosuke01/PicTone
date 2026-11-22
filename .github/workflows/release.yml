@@ -1,6 +1,6 @@
 name: Release
 
-# Publie une Release GitHub (tag vX.Y.Z + exe + msix) à chaque push sur main
+# Publie une Release GitHub (tag vX.Y.Z + exe) à chaque push sur main
 # qui modifie version.txt.
 on:
   push:
@@ -56,9 +56,9 @@ jobs:
         if: steps.exists.outputs.exists == 'false'
         run: python -m pip install -r requirements.txt
 
-      - name: Compiler (.exe + .msix)
+      - name: Compiler l'exécutable
         if: steps.exists.outputs.exists == 'false'
-        run: python build_msix.py
+        run: python build_exe.py
 
       - name: Test de démarrage de l'exécutable
         if: steps.exists.outputs.exists == 'false'
@@ -80,7 +80,7 @@ jobs:
         if: steps.exists.outputs.exists == 'false'
         shell: pwsh
         run: |
-          Get-ChildItem Executables -Include *.exe,*.msix -Recurse | ForEach-Object {
+          Get-ChildItem Executables -Include *.exe -Recurse | ForEach-Object {
             $h = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
             "$h  $($_.Name)" | Out-File -Append -Encoding ascii Executables/SHA256SUMS.txt
           }
@@ -92,7 +92,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           FILES=(Executables/*.exe Executables/SHA256SUMS.txt)
-          ls Executables/*.msix >/dev/null 2>&1 && FILES+=(Executables/*.msix)
           gh release create "${{ steps.version.outputs.tag }}" "${FILES[@]}" \
             --target "${{ github.sha }}" \
             --title "PicTone ${{ steps.version.outputs.tag }}" \
