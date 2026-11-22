@@ -1,7 +1,8 @@
 name: Release
 
-# Publie une Release GitHub (tag vX.Y.Z + exe) à chaque push sur main
-# qui modifie version.txt.
+# Publie une Release GitHub (tag vX.Y.Z) à chaque push sur main qui modifie version.txt.
+# Assets : PicTone_Setup_vX.Y.Z.exe (installeur), PicTone_vX.Y.Z.exe (portable, utilisé
+# par la mise à jour automatique) et SHA256SUMS.txt.
 on:
   push:
     branches: [main]
@@ -52,35 +53,72 @@ jobs:
           python-version: "3.11"
           cache: pip
 
-      - name: Installer les dépendances
+      - name: Installer les dépendances Python
         if: steps.exists.outputs.exists == 'false'
         run: python -m pip install -r requirements.txt
 
-      - name: Compiler l'exécutable
+      - name: Compiler l'exécutable portable
         if: steps.exists.outputs.exists == 'false'
         run: python build_exe.py
 
       - name: Test de démarrage de l'exécutable
         if: steps.exists.outputs.exists == 'false'
         shell: pwsh
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          $exe = "Executables/PicTone_v${{ steps.version.outputs.version }}.exe"
+          $exe = "Executables/PicTone_v$env:VERSION.exe"
           $p = Start-Process -FilePath $exe -PassThru
           Start-Sleep -Seconds 12
           if ($p.HasExited) {
-            Write-Error "PicTone s'est fermé au démarrage (code $($p.ExitCode))."
             $log = Join-Path $env:LOCALAPPDATA "PicTone/logs/crash_log.txt"
             if (Test-Path $log) { Get-Content $log }
-            exit 1
+            throw "PicTone s'est fermé au démarrage (code $($p.ExitCode))."
           }
           Stop-Process -Id $p.Id -Force
           Write-Host "Démarrage OK."
+
+      - name: Compiler l'installeur (Inno Setup)
+        if: steps.exists.outputs.exists == 'false'
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          choco install innosetup --no-progress -y
+          $iscc = Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6\ISCC.exe"
+          & $iscc "/DAppVersion=$env:VERSION" installer\PicTone.iss
+          if ($LASTEXITCODE -ne 0) { throw "Échec de la compilation de l'installeur." }
+
+      - name: Tester l'installeur (installation puis désinstallation silencieuses)
+        if: steps.exists.outputs.exists == 'false'
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $setup = "Executables/PicTone_Setup_v$env:VERSION.exe"
+          $install = Join-Path $env:LOCALAPPDATA "Programs\PicTone"
+          $app = Join-Path $install "PicTone.exe"
+          $shortcut = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\PicTone\PicTone.lnk"
+
+          Start-Process -FilePath $setup -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait
+          if (-not (Test-Path $app)) { throw "Fichier installé introuvable : $app" }
+          if (-not (Test-Path $shortcut)) { throw "Raccourci du menu Démarrer absent." }
+
+          $p = Start-Process -FilePath $app -PassThru
+          Start-Sleep -Seconds 12
+          if ($p.HasExited) { throw "PicTone installé s'est fermé au démarrage (code $($p.ExitCode))." }
+          Stop-Process -Id $p.Id -Force
+
+          $uninstaller = Join-Path $install "unins000.exe"
+          Start-Process -FilePath $uninstaller -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait
+          if (Test-Path $app) { throw "La désinstallation n'a pas supprimé PicTone.exe." }
+          Write-Host "Installation et désinstallation OK."
 
       - name: Empreintes SHA256
         if: steps.exists.outputs.exists == 'false'
         shell: pwsh
         run: |
-          Get-ChildItem Executables -Include *.exe -Recurse | ForEach-Object {
+          Get-ChildItem Executables -Filter *.exe | ForEach-Object {
             $h = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
             "$h  $($_.Name)" | Out-File -Append -Encoding ascii Executables/SHA256SUMS.txt
           }
@@ -91,8 +129,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          FILES=(Executables/*.exe Executables/SHA256SUMS.txt)
-          gh release create "${{ steps.version.outputs.tag }}" "${FILES[@]}" \
+          gh release create "${{ steps.version.outputs.tag }}" \
+            Executables/PicTone_Setup_v*.exe Executables/PicTone_v*.exe Executables/SHA256SUMS.txt \
             --target "${{ github.sha }}" \
             --title "PicTone ${{ steps.version.outputs.tag }}" \
             --generate-notes

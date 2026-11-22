@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -76,7 +77,7 @@ def _download(url, destination):
 
 
 def install(update):
-    """Télécharge, vérifie, puis lance un script qui remplace l'exe et relance l'app.
+    """Remplace l'exe en cours par la nouvelle version, puis le relance.
 
     Lève une exception en cas d'échec ; l'appelant doit fermer l'application si tout va bien.
     """
@@ -84,30 +85,36 @@ def install(update):
         raise RuntimeError("La mise à jour automatique n'est disponible que dans l'application Windows.")
 
     current_exe = os.path.abspath(sys.executable)
-    target_exe = os.path.join(os.path.dirname(current_exe), update["exe_name"])
+    staged = current_exe + ".new"
+    old = current_exe + ".old"
     work_dir = tempfile.mkdtemp(prefix="PicTone_update_")
-    downloaded = os.path.join(work_dir, update["exe_name"])
+    downloaded = os.path.join(work_dir, "PicTone.exe")
 
     expected = _expected_hash(update["sums_url"], update["exe_name"])
     if _download(update["exe_url"], downloaded) != expected:
         raise RuntimeError("Le fichier téléchargé est corrompu (empreinte SHA256 différente).")
 
-    # Copie dans le dossier de l'app avant de quitter : si l'écriture est refusée, on le sait ici.
-    staged = target_exe + ".new"
-    with open(downloaded, "rb") as src, open(staged, "wb") as dst:
-        dst.write(src.read())
-    os.replace(staged, target_exe)
+    shutil.copyfile(downloaded, staged)
+    if os.path.exists(old):
+        os.remove(old)
+    # Sous Windows, un exe en cours d'exécution peut être renommé, pas écrasé.
+    os.replace(current_exe, old)
+    try:
+        os.replace(staged, current_exe)
+    except OSError:
+        os.replace(old, current_exe)  # retour arrière
+        raise
 
+    # Le script attend que l'ancien exe soit libéré, le supprime, relance l'app puis s'efface.
     script = os.path.join(work_dir, "apply_update.bat")
     with open(script, "w", encoding="mbcs", newline="\r\n") as f:
         f.write(
             "@echo off\n"
-            "set PYINSTALLER_RESET_ENVIRONMENT=1\n"
             ":wait\n"
             "ping 127.0.0.1 -n 2 >nul\n"
-            f'if /I not "{current_exe}"=="{target_exe}" del /f /q "{current_exe}" >nul 2>&1\n'
-            f'if /I not "{current_exe}"=="{target_exe}" if exist "{current_exe}" goto wait\n'
-            f'start "" "{target_exe}"\n'
+            f'del /f /q "{old}" >nul 2>&1\n'
+            f'if exist "{old}" goto wait\n'
+            f'start "" "{current_exe}"\n'
             'del /f /q "%~f0" >nul 2>&1\n'
         )
     subprocess.Popen(
