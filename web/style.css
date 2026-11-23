@@ -1237,24 +1237,23 @@ body.eraser-mode .draw-canvas { cursor: none; }
 }
 
 /* =====================================================================
-   Statut de mise à jour (haut droite)
+   Statut de mise à jour (haut gauche)
    ===================================================================== */
 .update-status {
     position: fixed;
-    top: 12px;
-    right: 12px;
+    top: 16px;
+    left: 16px;
     z-index: 1000;
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 6px 14px;
+    padding: 6px 12px;
     border: 1px solid transparent;
-    border-radius: 999px;
+    border-radius: 6px;
     font-family: var(--font-sans);
     font-size: 12px;
     font-weight: 600;
     line-height: 1;
-    cursor: pointer;
     transition: var(--transition-base);
     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
 }
@@ -1263,6 +1262,7 @@ body.eraser-mode .draw-canvas { cursor: none; }
     background-color: #f5a623;
     border-color: #f5a623;
     color: #1a1a1a;
+    cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='11' fill='%23f5a623' stroke='white' stroke-width='1.5'/%3E%3Cpath d='M12 6.5v7' stroke='white' stroke-width='2.4' stroke-linecap='round'/%3E%3Ccircle cx='12' cy='17.2' r='1.4' fill='white'/%3E%3C/svg%3E") 12 12, default;
 }
 .update-status.is-available:hover:not(:disabled) {
     background-color: #ffb84d;
@@ -1272,6 +1272,6 @@ body.eraser-mode .draw-canvas { cursor: none; }
     background-color: #2ea043;
     border-color: #2ea043;
     color: #ffffff;
-    cursor: default;
+    cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='11' fill='%232ea043' stroke='white' stroke-width='1.5'/%3E%3Cpath d='M7 12.5l3.2 3.2L17 9' fill='none' stroke='white' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") 12 12, default;
 }
-.update-status:disabled { opacity: 0.85; cursor: wait; }
+.update-status:disabled { opacity: 0.85; }
