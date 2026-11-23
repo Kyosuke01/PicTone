@@ -139,7 +139,7 @@ def is_webview2_installed():
 # API exposée au JavaScript (window.pywebview.api.*)
 # ---------------------------------------------------------------------------
 
-def _schedule_exit(delay=1.5):
+def _schedule_exit(delay=0.5):
     """Termine le processus après delay secondes (laisse le temps de répondre au JavaScript)."""
     threading.Timer(delay, os._exit, args=(0,)).start()
 

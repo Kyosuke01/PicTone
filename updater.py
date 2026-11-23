@@ -277,11 +277,11 @@ def install_macos(update):
             f'log "démarrage, attente de la fermeture de PicTone (pid {pid})"\n'
             "waited=0\n"
             f"while kill -0 {pid} 2>/dev/null; do\n"
-            "  sleep 1\n"
+            "  sleep 0.2\n"  # sondage toutes les 200 ms : la relance suit la fermeture de PicTone de très près
             "  waited=$((waited + 1))\n"
-            '  if [ "$waited" -ge 120 ]; then log "PicTone est toujours ouvert après 120 s : abandon"; exit 1; fi\n'
+            '  if [ "$waited" -ge 600 ]; then log "PicTone est toujours ouvert après 120 s : abandon"; exit 1; fi\n'
             "done\n"
-            'log "PicTone fermé après $waited s, remplacement de l\'application"\n'
+            'log "PicTone fermé après $((waited / 5)) s environ, remplacement de l\'application"\n'
             f'if mv "{app}" "{backup}" 2>>"$LOG"; then\n'
             '  log "ancienne version mise de côté"\n'
             f'  if ditto "{staged}" "{app}" 2>>"$LOG"; then\n'

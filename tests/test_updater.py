@@ -488,6 +488,7 @@ def test_install_macos_launches_replacement_script(mac_app):
     assert args[0] == "/bin/sh"
     script = open(args[1], encoding="utf-8").read()
     assert f"while kill -0 {os.getpid()}" in script           # attend la fermeture de l'app
+    assert "sleep 0.2" in script                              # sondage rapide, pas de délai fixe d'une seconde
     assert f'mv "{mac_app.app}"' in script                     # met l'ancienne version de côté
     assert f'open "{mac_app.app}"' in script                   # relance l'app
     assert f'rm -rf "{mac_app.work}"' in script                # nettoie les fichiers temporaires
