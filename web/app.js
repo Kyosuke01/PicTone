@@ -765,6 +765,93 @@ function processFilter() {
         parseInt(sliderOpacity.value));
 }
 
+// ---------------------------------------------------------------------------
+// Flou : le filtre natif du canvas (ctx.filter) est ignoré par Safari / WKWebView (macOS) : la propriété
+// accepte « blur(5px) » mais ne floute rien. On vérifie donc l'effet réel, et sinon on calcule un flou
+// gaussien (3 passes de flou par boîte) en JavaScript.
+// ---------------------------------------------------------------------------
+
+let canvasBlurWorks = null;
+function canvasFilterBlurWorks() {
+    if (canvasBlurWorks !== null) return canvasBlurWorks;
+    try {
+        const src = document.createElement('canvas');
+        src.width = src.height = 20;
+        const sx = src.getContext('2d');
+        sx.fillStyle = '#000'; sx.fillRect(0, 0, 20, 20);
+        sx.fillStyle = '#fff'; sx.fillRect(10, 0, 10, 20);
+        const dst = document.createElement('canvas');
+        dst.width = dst.height = 20;
+        const dx = dst.getContext('2d');
+        dx.filter = 'blur(3px)';
+        dx.drawImage(src, 0, 0);
+        const edge = dx.getImageData(9, 10, 2, 1).data;
+        canvasBlurWorks = edge[0] > 0 && edge[0] < 255; // le bord noir/blanc doit être adouci
+    } catch (e) {
+        canvasBlurWorks = false;
+    }
+    return canvasBlurWorks;
+}
+
+// Tailles de boîtes dont 3 passes approchent un flou gaussien d'écart-type sigma
+function boxesForGauss(sigma, n) {
+    const ideal = Math.sqrt((12 * sigma * sigma / n) + 1);
+    let lower = Math.floor(ideal);
+    if (lower % 2 === 0) lower--;
+    const upper = lower + 2;
+    const m = Math.round((12 * sigma * sigma - n * lower * lower - 4 * n * lower - 3 * n) / (-4 * lower - 4));
+    return Array.from({ length: n }, (_, i) => (i < m ? lower : upper));
+}
+
+// Flou par boîte le long d'un axe (bords prolongés), de src vers dst
+function boxBlurAxis(src, dst, len, lines, lineStride, step, r) {
+    const inv = 1 / (2 * r + 1);
+    const last = len - 1;
+    for (let l = 0; l < lines; l++) {
+        const base = l * lineStride;
+        let sum = 0;
+        for (let k = -r; k <= r; k++) sum += src[base + Math.min(Math.max(k, 0), last) * step];
+        for (let i = 0; i < len; i++) {
+            dst[base + i * step] = sum * inv;
+            sum += src[base + Math.min(i + r + 1, last) * step] - src[base + Math.max(i - r, 0) * step];
+        }
+    }
+}
+
+function gaussianBlurCanvas(ctx, width, height, sigma) {
+    if (!(sigma > 0) || width < 1 || height < 1) return;
+    const image = ctx.getImageData(0, 0, width, height);
+    const data = image.data;
+    const count = width * height;
+    // Canaux prémultipliés par l'alpha : un bord transparent ne « bave » pas sur les couleurs
+    const channels = [0, 1, 2, 3].map(() => new Float32Array(count));
+    for (let i = 0, p = 0; i < count; i++, p += 4) {
+        const a = data[p + 3] / 255;
+        channels[0][i] = data[p] * a;
+        channels[1][i] = data[p + 1] * a;
+        channels[2][i] = data[p + 2] * a;
+        channels[3][i] = data[p + 3];
+    }
+    const tmp = new Float32Array(count);
+    const sizes = boxesForGauss(sigma, 3);
+    for (const channel of channels) {
+        for (const size of sizes) {
+            const r = (size - 1) / 2;
+            boxBlurAxis(channel, tmp, width, height, width, 1, r);   // horizontal
+            boxBlurAxis(tmp, channel, height, width, 1, width, r);   // vertical
+        }
+    }
+    for (let i = 0, p = 0; i < count; i++, p += 4) {
+        const a = channels[3][i];
+        const k = a > 0 ? 255 / a : 0;
+        data[p] = channels[0][i] * k;
+        data[p + 1] = channels[1][i] * k;
+        data[p + 2] = channels[2][i] * k;
+        data[p + 3] = a;
+    }
+    ctx.putImageData(image, 0, 0);
+}
+
 function applyFiltersToContext(ctx, img, width, height, filters, blur, opacity) {
     // 1. Draw base image (without filters)
     ctx.drawImage(img, 0, 0, width, height);
@@ -773,7 +860,10 @@ function applyFiltersToContext(ctx, img, width, height, filters, blur, opacity) 
     for (const filterType of filters) {
         if (filterType === "Aucun") continue;
 
-        if (filterType === "Flou") {
+        if (filterType === "Flou" && !canvasFilterBlurWorks()) {
+            gaussianBlurCanvas(ctx, width, height, blur); // WebKit : pas de ctx.filter
+        }
+        else if (filterType === "Flou") {
             // Create temporary canvas to copy current state
             const tempCanvas = document.createElement('canvas');
             tempCanvas.width = width;
