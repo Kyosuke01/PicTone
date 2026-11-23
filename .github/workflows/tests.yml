@@ -48,15 +48,14 @@ jobs:
       - name: Compiler l'application
         run: python3 build_exe.py
 
+      - name: Installer create-dmg
+        run: brew install create-dmg
+
       - name: Créer le .dmg
         run: |
           VERSION="$(tr -d '[:space:]' < version.txt)"
-          STAGE="$RUNNER_TEMP/dmg"
-          mkdir -p "$STAGE" release
-          cp -R "build_portable/PicTone_v${VERSION}_macOS.app" "$STAGE/PicTone.app"
-          ln -s /Applications "$STAGE/Applications"
-          hdiutil create -volname "PicTone ${VERSION}" -srcfolder "$STAGE" -ov -format UDZO \
-            "release/PicTone_v${VERSION}_macOS.dmg"
+          mkdir -p release
+          installer/make_dmg.sh "$VERSION" "build_portable/PicTone_v${VERSION}_macOS.app" "release/PicTone_v${VERSION}_macOS.dmg"
 
       - name: Publier le .dmg (artefact téléchargeable)
         uses: actions/upload-artifact@v4
