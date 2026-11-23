@@ -1,7 +1,8 @@
-"""PicTone — éditeur d'images local (pywebview + WebView2)."""
+"""PicTone — éditeur d'images local (pywebview : WebView2 sous Windows, WebKit sous macOS)."""
 
 import base64
 import os
+import subprocess
 import sys
 import tempfile
 import time
@@ -10,6 +11,8 @@ import traceback
 import updater
 
 APP_NAME = "PicTone"
+IS_WINDOWS = sys.platform == "win32"
+IS_MAC = sys.platform == "darwin"
 
 
 # ---------------------------------------------------------------------------
@@ -39,14 +42,18 @@ CURRENT_VERSION = load_version()
 # ---------------------------------------------------------------------------
 
 def _log_candidates():
-    local = os.environ.get("LOCALAPPDATA")
-    if local:
-        yield os.path.join(local, APP_NAME, "logs")
+    """Dossiers de journal, par ordre de préférence."""
+    if IS_WINDOWS:
+        local = os.environ.get("LOCALAPPDATA")
+        if local:
+            yield os.path.join(local, APP_NAME, "logs")
+    elif IS_MAC:
+        yield os.path.join(os.path.expanduser("~"), "Library", "Logs", APP_NAME)
     yield os.path.join(tempfile.gettempdir(), APP_NAME)
 
 
 def log_error(msg):
-    """Écrit dans crash_log.txt et renvoie le chemin du fichier (ou None)."""
+    """Ajoute msg à crash_log.txt. Renvoie le chemin du fichier, ou None si impossible."""
     line = f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] v{CURRENT_VERSION}\n{msg}\n"
     for directory in _log_candidates():
         try:
@@ -60,12 +67,28 @@ def log_error(msg):
     return None
 
 
+def _applescript_string(text):
+    """Chaîne AppleScript sûre ; les retours à la ligne deviennent `return`."""
+    lines = [line.replace("\\", "\\\\").replace('"', '\\"') for line in text.split("\n")]
+    return " & return & ".join(f'"{line}"' for line in lines)
+
+
+def _mac_dialog_script(message):
+    return (
+        "display dialog " + _applescript_string(message)
+        + ' with title "' + APP_NAME + '" with icon stop buttons {"OK"}'
+    )
+
+
 def show_error(message):
-    """Affiche une boîte de dialogue native (l'exe n'a pas de console)."""
+    """Affiche une boîte de dialogue native d'erreur (sinon, affichage sur stderr)."""
     try:
-        if sys.platform == "win32":
+        if IS_WINDOWS:
             import ctypes
             ctypes.windll.user32.MessageBoxW(0, message, APP_NAME, 0x10)  # MB_ICONERROR
+            return
+        if IS_MAC:
+            subprocess.run(["osascript", "-e", _mac_dialog_script(message)], check=False, timeout=120)
             return
     except Exception:
         pass
@@ -79,7 +102,7 @@ def report_crash(exc_text):
 
 
 # ---------------------------------------------------------------------------
-# WebView2
+# WebView2 (Windows uniquement)
 # ---------------------------------------------------------------------------
 
 WEBVIEW2_DOWNLOAD_URL = "https://go.microsoft.com/fwlink/p/?LinkId=2124703"
@@ -88,7 +111,7 @@ _WEBVIEW2_GUID = "{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
 
 def is_webview2_installed():
     """Vérifie la présence du runtime WebView2 (toujours True hors Windows)."""
-    if sys.platform != "win32":
+    if not IS_WINDOWS:
         return True
     try:
         import winreg
@@ -123,17 +146,20 @@ class PicToneAPI:
         return CURRENT_VERSION
 
     def check_update(self):
-        """Renvoie {'available': bool, 'version': str} (jamais d'exception)."""
+        """Renvoie {'available': bool, 'version': str}. Ne lève jamais d'exception."""
         try:
             self._update = updater.check(CURRENT_VERSION)
         except Exception:
             log_error("Vérification de mise à jour :\n" + traceback.format_exc())
             self._update = {"available": False}
-        return {"available": self._update["available"], "version": self._update.get("version", "")}
+        return {
+            "available": bool(self._update.get("available")),
+            "version": self._update.get("version", ""),
+        }
 
     def install_update(self):
-        """Installe la mise à jour trouvée, puis ferme l'app (le script la relance)."""
-        if not getattr(self, "_update", {}).get("available"):
+        """Installe la mise à jour trouvée, puis ferme l'app (l'installeur la relance)."""
+        if not self._update.get("available"):
             return {"ok": False, "error": "Aucune mise à jour disponible."}
         try:
             updater.install(self._update)
@@ -203,12 +229,11 @@ def main():
         resizable=True,
     )
 
-    # http_server=True : évite les restrictions file:// de WebView2.
-    # L'icône n'est passée que si le fichier existe (sinon WinForms plante).
+    # http_server=True : évite les restrictions file:// de WebView2 (et WebKit).
     start_kwargs = {"http_server": True, "private_mode": False}
     icon_path = resource_path("pictone.ico")
-    if os.path.isfile(icon_path):
-        start_kwargs["icon"] = icon_path
+    if IS_WINDOWS and os.path.isfile(icon_path):
+        start_kwargs["icon"] = icon_path  # l'icône de fenêtre n'est gérée que sous Windows
 
     webview.start(**start_kwargs)
     return 0
