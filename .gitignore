@@ -63,3 +63,6 @@ $RECYCLE.BIN/
 # Local configuration
 .env
 .env.local
+
+# Configuration locale de l'éditeur / aperçu
+.claude/
