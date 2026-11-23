@@ -1,6 +1,7 @@
 """PicTone — éditeur d'images local (pywebview : WebView2 sous Windows, WebKit sous macOS)."""
 
 import base64
+import json
 import os
 import subprocess
 import sys
@@ -272,6 +273,125 @@ def _setup_webview_log():
         return
 
 
+# ---------------------------------------------------------------------------
+# Menus natifs (barre de menus macOS, barre de menus de la fenêtre Windows)
+# Structure en données pures (testable) ; converties en objets pywebview au démarrage.
+# ---------------------------------------------------------------------------
+
+def _kbd(key):
+    """Libellé de raccourci selon la plateforme : ⌘S sur macOS, Ctrl+S ailleurs."""
+    return f"⌘{key}" if IS_MAC else f"Ctrl+{key}"
+
+
+def _send_command(api, command):
+    """Envoie une commande à l'interface (picToneCommand, app.js)."""
+    window = api._window
+    if window is None:
+        return
+    try:
+        window.evaluate_js(f"picToneCommand('{command}')")
+    except Exception:
+        log_error("Commande de menu « " + command + " » :\n" + traceback.format_exc())
+
+
+def _show_message(api, text):
+    """Affiche un message dans l'interface sans bloquer le menu."""
+    window = api._window
+    if window is None:
+        return
+    try:
+        window.evaluate_js(f"setTimeout(() => alert({json.dumps(text, ensure_ascii=False)}), 0)")
+    except Exception:
+        log_error("Message de menu :\n" + traceback.format_exc())
+
+
+def _check_updates_from_menu(api):
+    """Aide > Vérifier les mises à jour : contrôle puis affiche le résultat."""
+    try:
+        info = api.check_update()
+    except Exception:
+        _show_message(api, "Impossible de vérifier les mises à jour.")
+        return
+    if info.get("available"):
+        text = f"Version {CURRENT_VERSION} installée.\nMise à jour disponible : {info.get('version')}.\nUtilisez le bouton « Mettre à jour »."
+    elif info.get("up_to_date"):
+        text = f"PicTone {CURRENT_VERSION} est à jour."
+    else:
+        text = "Impossible de vérifier les mises à jour (hors ligne ou mode développement)."
+    _show_message(api, text)
+
+
+def build_menus(api):
+    """Menus de l'application, en données : {'title', 'items'} ; items = commande, action ou séparateur."""
+    def item(title, name=None, action=None):
+        entry = {"title": title}
+        entry["action"] = action if action is not None else (lambda: _send_command(api, name))
+        return entry
+
+    fichier = [
+        item(f"Ouvrir une image…  ({_kbd('O')})", "open"),
+        item(f"Enregistrer l'image…  ({_kbd('S')})", "save"),
+        item("Réinitialiser", "reset"),
+    ]
+    if IS_WINDOWS:
+        # Sous macOS, « Quitter » est fourni par le menu de l'application.
+        fichier += [{"separator": True}, item("Quitter", action=lambda: api._window and api._window.destroy())]
+
+    menus = [
+        {"title": "Fichier", "items": fichier},
+        {"title": "Édition", "items": [
+            item(f"Annuler  ({_kbd('Z')})", "undo"),
+            item(f"Rétablir  ({_kbd('Y')})", "redo"),
+        ]},
+        {"title": "Affichage", "items": [
+            item(f"Zoom avant  ({_kbd('+')})", "zoomIn"),
+            item(f"Zoom arrière  ({_kbd('-')})", "zoomOut"),
+            item(f"Taille réelle  ({_kbd('0')})", "zoomReset"),
+            {"separator": True},
+            item("Panneau Filtres", "panelFilters"),
+            item("Panneau Dessin", "panelDraw"),
+            item("Panneau Transformer", "panelTransform"),
+        ]},
+        {"title": "Aide", "items": [
+            item("Vérifier les mises à jour", action=lambda: _check_updates_from_menu(api)),
+            item(f"À propos de {APP_NAME}", action=lambda: _show_message(
+                api, f"{APP_NAME} {CURRENT_VERSION}\nÉditeur d'images local.")),
+        ]},
+    ]
+    return menus
+
+
+def to_pywebview_menus(spec):
+    """Convertit la structure de build_menus en objets webview.menu (pywebview)."""
+    from webview.menu import Menu, MenuAction, MenuSeparator
+
+    def convert(entries):
+        out = []
+        for entry in entries:
+            if entry.get("separator"):
+                out.append(MenuSeparator())
+            elif "items" in entry:
+                out.append(Menu(entry["title"], convert(entry["items"])))
+            else:
+                out.append(MenuAction(entry["title"], entry["action"]))
+        return out
+
+    return [Menu(menu["title"], convert(menu["items"])) for menu in spec]
+
+
+# pywebview : libellés des éléments fournis par macOS (menu de l'application), en français
+MAC_MENU_LOCALIZATION = {
+    "cocoa.menu.about": "À propos de",
+    "cocoa.menu.services": "Services",
+    "cocoa.menu.hide": "Masquer",
+    "cocoa.menu.hideOthers": "Masquer les autres",
+    "cocoa.menu.showAll": "Tout afficher",
+    "cocoa.menu.quit": "Quitter",
+    "cocoa.menu.view": "Présentation",
+    "cocoa.menu.fullscreen": "Plein écran",
+}
+
+
 def main():
     _setup_webview_log()
     if not is_webview2_installed():
@@ -296,6 +416,8 @@ def main():
 
     # http_server=True : évite les restrictions file:// de WebView2 (et WebKit).
     start_kwargs = {"http_server": True, "private_mode": False}
+    start_kwargs["menu"] = to_pywebview_menus(build_menus(api))
+    start_kwargs["localization"] = MAC_MENU_LOCALIZATION
     icon_path = resource_path("pictone.ico")
     if IS_WINDOWS and os.path.isfile(icon_path):
         start_kwargs["icon"] = icon_path  # l'icône de fenêtre n'est gérée que sous Windows

@@ -2705,7 +2705,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Block native Ctrl + key shortcuts for zoom (Plus, Minus, Equal, Zero)
     window.addEventListener('keydown', (e) => {
-        if (e.ctrlKey && (e.key === '+' || e.key === '-' || e.key === '=' || e.key === '0')) {
+        if ((e.ctrlKey || e.metaKey) && (e.key === '+' || e.key === '-' || e.key === '=' || e.key === '0')) {
             e.preventDefault();
         }
     });
@@ -2822,3 +2822,61 @@ async function renderFilterThumbnails() {
 sliderBlur.addEventListener('input', renderFilterThumbnails);
 sliderOpacity.addEventListener('input', renderFilterThumbnails);
 renderFilterThumbnails();
+
+// ---------------------------------------------------------------------------
+// RACCOURCIS ET MENUS NATIFS
+// ---------------------------------------------------------------------------
+
+const IS_MAC_PLATFORM = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+
+// Sur macOS, les indications de raccourcis utilisent la touche ⌘ au lieu de Ctrl.
+function applyPlatformShortcuts() {
+    if (!IS_MAC_PLATFORM) return;
+    document.querySelectorAll('[title*="Ctrl+"]').forEach((el) => {
+        el.title = el.title.replace(/Ctrl\+/g, '⌘');
+    });
+    document.querySelectorAll('.format-hint').forEach((el) => {
+        el.textContent = el.textContent.replace(/Ctrl\+/g, '⌘');
+    });
+}
+applyPlatformShortcuts();
+
+// Commandes des menus natifs : Python appelle window.evaluate_js("picToneCommand('…')").
+window.picToneCommand = (cmd) => {
+    const click = (id) => {
+        const el = document.getElementById(id);
+        if (el && !el.disabled) el.click();
+    };
+    const zoom = (delta) => {
+        if (!originalImage) return;
+        zoomScale = Math.max(0.5, Math.min(5.0, zoomScale + delta));
+        updateViewerTransform();
+    };
+    switch (cmd) {
+        case 'open':        fileInput.click(); break;
+        case 'save':        click('btn-save'); break;
+        case 'reset':       click('btn-reset'); break;
+        case 'undo':        click('btn-undo'); break;
+        case 'redo':        click('btn-redo'); break;
+        case 'zoomIn':      zoom(0.1); break;
+        case 'zoomOut':     zoom(-0.1); break;
+        case 'zoomReset':   resetZoomAndPan(); break;
+        case 'panelFilters':   click('stab-filters'); break;
+        case 'panelDraw':      click('stab-draw'); break;
+        case 'panelTransform': click('stab-transform'); break;
+        default: updLog(`commande de menu inconnue : ${cmd}`);
+    }
+    updLog(`commande de menu : ${cmd}`);
+};
+
+// Raccourcis : ⌘/Ctrl + O (ouvrir), S (enregistrer), + / - / 0 (zoom). Ignorés pendant la saisie.
+document.addEventListener('keydown', (e) => {
+    if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+    if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) return;
+    const key = e.key.toLowerCase();
+    const map = { o: 'open', s: 'save', '+': 'zoomIn', '=': 'zoomIn', '-': 'zoomOut', '0': 'zoomReset' };
+    if (map[key]) {
+        e.preventDefault();
+        window.picToneCommand(map[key]);
+    }
+});

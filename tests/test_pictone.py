@@ -512,3 +512,86 @@ def test_log_js_writes_interface_traces_to_update_log(log_dir):
     assert _api().log_js("clic sur le bouton") is True
     text = open(log_dir / "update.log", encoding="utf-8").read()
     assert "[interface] clic sur le bouton" in text
+
+
+# ---------------------------------------------------------------------------
+# Menus natifs
+# ---------------------------------------------------------------------------
+
+class _CommandWindow:
+    def __init__(self):
+        self.scripts = []
+        self.destroyed = False
+
+    def evaluate_js(self, script):
+        self.scripts.append(script)
+
+    def destroy(self):
+        self.destroyed = True
+
+
+def _menu_api(window=None):
+    api = _api()
+    api._window = window
+    return api
+
+
+def _find_item(menus, menu_title, prefix):
+    menu = next(m for m in menus if m["title"] == menu_title)
+    return next(i for i in menu["items"] if i.get("title", "").startswith(prefix))
+
+
+@pytest.mark.parametrize("is_mac, undo_label", [(True, "Annuler  (⌘Z)"), (False, "Annuler  (Ctrl+Z)")])
+def test_menu_labels_use_platform_shortcuts(monkeypatch, is_mac, undo_label):
+    monkeypatch.setattr(pictone, "IS_MAC", is_mac)
+    monkeypatch.setattr(pictone, "IS_WINDOWS", not is_mac)
+    menus = pictone.build_menus(_menu_api())
+    assert _find_item(menus, "Édition", "Annuler")["title"] == undo_label
+
+
+def test_menu_commands_send_matching_js_command(monkeypatch):
+    monkeypatch.setattr(pictone, "IS_MAC", True)
+    window = _CommandWindow()
+    menus = pictone.build_menus(_menu_api(window))
+    _find_item(menus, "Édition", "Annuler")["action"]()
+    _find_item(menus, "Fichier", "Enregistrer")["action"]()
+    assert window.scripts == ["picToneCommand('undo')", "picToneCommand('save')"]
+
+
+def test_windows_file_menu_has_quit_but_mac_does_not(monkeypatch):
+    monkeypatch.setattr(pictone, "IS_WINDOWS", True)
+    window = _CommandWindow()
+    menus = pictone.build_menus(_menu_api(window))
+    _find_item(menus, "Fichier", "Quitter")["action"]()
+    assert window.destroyed is True
+
+    monkeypatch.setattr(pictone, "IS_WINDOWS", False)
+    mac_menus = pictone.build_menus(_menu_api(window))
+    assert not any(i.get("title") == "Quitter" for i in next(m for m in mac_menus if m["title"] == "Fichier")["items"])
+
+
+def test_help_menu_shows_version_message(monkeypatch):
+    monkeypatch.setattr(pictone, "CURRENT_VERSION", "3.3.0")
+    window = _CommandWindow()
+    menus = pictone.build_menus(_menu_api(window))
+    _find_item(menus, "Aide", "À propos")["action"]()
+    assert "PicTone 3.3.0" in window.scripts[0]
+    assert window.scripts[0].startswith("setTimeout(() => alert(")
+
+
+def test_check_updates_menu_reports_up_to_date(monkeypatch):
+    monkeypatch.setattr(pictone, "CURRENT_VERSION", "3.3.0")
+    window = _CommandWindow()
+    api = _menu_api(window)
+    monkeypatch.setattr(api, "check_update", lambda: {"available": False, "up_to_date": True, "version": "3.3.0"})
+    menus = pictone.build_menus(api)
+    _find_item(menus, "Aide", "Vérifier")["action"]()
+    assert "est à jour" in window.scripts[0]
+
+
+def test_to_pywebview_menus_converts_structure(fake_webview):
+    menus = pictone.build_menus(_menu_api(_CommandWindow()))
+    converted = pictone.to_pywebview_menus(menus)
+    assert [m.title for m in converted] == ["Fichier", "Édition", "Affichage", "Aide"]
+    file_items = converted[0].items
+    assert type(file_items[0]).__name__ == "MenuAction"

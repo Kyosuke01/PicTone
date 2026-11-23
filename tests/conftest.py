@@ -40,7 +40,24 @@ def fake_webview(monkeypatch):
 
     module.create_window = create_window
     module.start = lambda **kwargs: module.started.append(kwargs)
+
+    menu_module = types.ModuleType("webview.menu")
+
+    class Menu:
+        def __init__(self, title, items=None):
+            self.title, self.items = title, items or []
+
+    class MenuAction:
+        def __init__(self, title, function):
+            self.title, self.function = title, function
+
+    class MenuSeparator:
+        pass
+
+    menu_module.Menu, menu_module.MenuAction, menu_module.MenuSeparator = Menu, MenuAction, MenuSeparator
+    module.menu = menu_module
     monkeypatch.setitem(sys.modules, "webview", module)
+    monkeypatch.setitem(sys.modules, "webview.menu", menu_module)
     return module
 
 
