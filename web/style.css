@@ -251,8 +251,14 @@ body {
 
 /* Controls section disabled state */
 .controls-section.disabled {
-    opacity: 0.3;
     pointer-events: none;
+}
+.controls-section.disabled > * {
+    opacity: 0.3;
+}
+/* Les vignettes restent lisibles avant l'import : on voit le rendu de chaque filtre d'avance */
+.controls-section.disabled > .filters-list {
+    opacity: 1;
 }
 
 /* Filters List (sober vertical buttons) */
@@ -263,6 +269,10 @@ body {
     margin-bottom: 16px;
 }
 .filter-item {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
     background-color: rgba(255, 255, 255, 0.02);
     border: 1px solid var(--border-color);
     color: var(--text-main);
@@ -270,11 +280,24 @@ body {
     font-size: 11px;
     font-weight: 500;
     text-align: center;
-    padding: 6px 4px;
+    padding: 4px 4px 6px;
     border-radius: 4px;
     cursor: pointer;
     transition: var(--transition-base);
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+/* Vignette : rendu réel du filtre sur l'image de test (assets/test-filtres.png) */
+.filter-thumb {
+    display: block;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 3 / 2;
+    border-radius: 3px;
+    background: #111;
+}
+.filter-name {
     overflow: hidden;
     text-overflow: ellipsis;
 }

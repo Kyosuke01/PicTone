@@ -2767,3 +2767,58 @@ document.addEventListener('DOMContentLoaded', () => {
     initScrollbarEvents();
 });
 
+
+// ---------------------------------------------------------------------------
+// VIGNETTES DES FILTRES
+// Chaque bouton de filtre montre le rendu réel du filtre sur une image de test,
+// calculé par le même moteur (applyFiltersToContext) que l'image de l'éditeur.
+// ---------------------------------------------------------------------------
+
+const TEST_IMAGE_SRC = 'assets/test-filtres.png';
+const THUMB_WIDTH = 240; // résolution de rendu (affichée à ~120 px, nette sur écran Retina)
+let testImage = null;
+let testImageLoading = null;
+
+function loadTestImage() {
+    if (testImage) return Promise.resolve(testImage);
+    if (!testImageLoading) {
+        testImageLoading = new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => resolve(img);
+            img.onerror = () => reject(new Error(`image de test introuvable : ${TEST_IMAGE_SRC}`));
+            img.src = TEST_IMAGE_SRC;
+        });
+    }
+    return testImageLoading.then((img) => { testImage = img; return img; });
+}
+
+async function renderFilterThumbnails() {
+    if (!filterCards.length) return;
+    let img;
+    try {
+        img = await loadTestImage();
+    } catch (e) {
+        console.warn('[filtres]', e.message);
+        return;
+    }
+    const thumbW = THUMB_WIDTH;
+    const thumbH = Math.round(THUMB_WIDTH * img.height / img.width);
+    // Le flou et l'opacité suivent les curseurs actuels, à l'échelle de la vignette.
+    const blur = parseFloat(sliderBlur.value) * (thumbW / img.width);
+    const opacity = parseInt(sliderOpacity.value, 10);
+
+    filterCards.forEach((card) => {
+        const canvas = card.querySelector('.filter-thumb');
+        if (!canvas) return;
+        canvas.width = thumbW;
+        canvas.height = thumbH;
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, thumbW, thumbH);
+        applyFiltersToContext(ctx, img, thumbW, thumbH, [card.dataset.filter], blur, opacity);
+    });
+}
+
+// Mise à jour en direct quand on règle le flou ou l'opacité
+sliderBlur.addEventListener('input', renderFilterThumbnails);
+sliderOpacity.addEventListener('input', renderFilterThumbnails);
+renderFilterThumbnails();
