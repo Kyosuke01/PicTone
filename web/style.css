@@ -265,6 +265,13 @@ body {
     filter: grayscale(1);
     cursor: not-allowed;
 }
+/* Filtre « Aucun » actif : pas de bordure ni de fond bleu tant que la section est inactive */
+.controls-section.disabled .filter-item.active,
+.controls-section.disabled .filter-item[data-filter="Aucun"].active {
+    background-color: rgba(255, 255, 255, 0.02);
+    border-color: var(--border-color);
+    color: var(--text-muted);
+}
 
 /* Filters List (sober vertical buttons) */
 .filters-list {
@@ -672,10 +679,19 @@ input[type="color"] {
     cursor: pointer;
     transition: var(--transition-base);
 }
-.format-btn:hover { color: var(--text-main); }
+.format-btn:hover:not(:disabled) { color: var(--text-main); }
 .format-btn.active {
     background: var(--accent-color);
     color: white;
+}
+/* Sans image : gris neutre, jamais de bleu d'accent */
+.format-btn:disabled {
+    color: #555555;
+    cursor: not-allowed;
+}
+.format-btn.active:disabled {
+    background: #2e2e2e;
+    color: #6b6b6b;
 }
 
 /* Active Image Viewer Workspace */

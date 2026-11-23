@@ -2367,6 +2367,10 @@ function updateControlStates() {
     btnCropApply.disabled  = !cropping;
     btnCropCancel.disabled = !cropping;
 
+    // Format d'export et qualité : inutilisables sans image (ou pendant un recadrage)
+    formatBtns.forEach((btn) => { btn.disabled = !sectionsActive; });
+    qualitySliderContainer.querySelectorAll('input').forEach((input) => { input.disabled = !sectionsActive; });
+
     // Les éléments des menus natifs suivent le même état
     publishCommandStates({
         open: true,
