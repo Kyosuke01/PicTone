@@ -2745,10 +2745,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
     close.addEventListener('click', () => { modal.hidden = true; });
     btn.addEventListener('click', async () => {
-        const api = updaterApi();
         modal.hidden = false;
+        text.textContent = 'Vérification…';
+        // Attend jusqu'à 5 s que l'API pywebview expose ses méthodes.
+        let api = updaterApi();
+        for (let i = 0; !api && i < 25; i++) {
+            await new Promise((resolve) => setTimeout(resolve, 200));
+            api = updaterApi();
+        }
         if (!api) {
-            text.innerHTML = '<b>API pywebview indisponible</b> : le contrôle ne peut pas être lancé.';
+            const pw = window.pywebview;
+            const keys = pw && pw.api ? Object.keys(pw.api).join(', ') || '(aucune)' : '(absent)';
+            text.innerHTML = '<b>API pywebview indisponible</b> : le contrôle ne peut pas être lancé.'
+                + `<br><small>window.pywebview : ${pw ? 'présent' : 'absent'}<br>`
+                + `api : ${pw && pw.api ? 'présent' : 'absent'}<br>`
+                + `méthodes exposées : ${keys}</small>`;
             return;
         }
         text.textContent = 'Vérification…';
