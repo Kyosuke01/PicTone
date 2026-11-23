@@ -385,6 +385,10 @@ def command_labels(spec):
     return labels
 
 
+# Menus ajoutés par PicTone (les menus système de macOS ne sont pas modifiés)
+OWN_MENU_TITLES = ("Fichier", "Édition", "Affichage", "Aide")
+
+
 def _apply_menu_states_mac(labels, states):
     """macOS : active ou grise les éléments de la barre de menus (thread principal)."""
     from AppKit import NSApplication
@@ -395,9 +399,13 @@ def _apply_menu_states_mac(labels, states):
         if main_menu is None:
             return
         for i in range(main_menu.numberOfItems()):
-            submenu = main_menu.itemAtIndex_(i).submenu()
+            top = main_menu.itemAtIndex_(i)
+            submenu = top.submenu()
             if submenu is None:
                 continue
+            if str(top.title()) in OWN_MENU_TITLES:
+                # Sans ceci, AppKit réactive chaque élément au moment d'ouvrir le menu.
+                submenu.setAutoenablesItems_(False)
             for j in range(submenu.numberOfItems()):
                 item = submenu.itemAtIndex_(j)
                 command = labels.get(str(item.title()))
