@@ -2514,11 +2514,18 @@ btnReset.addEventListener('click', async () => {
 // Mise à jour automatique
 // ---------------------------------------------------------------------------
 
+// L'API pywebview n'est utilisable qu'une fois ses méthodes exposées (sous Windows, WebView2
+// peut présenter « window.pywebview.api » avant elles).
+function updaterApi() {
+    const api = window.pywebview && window.pywebview.api;
+    return api && typeof api.check_update === 'function' ? api : null;
+}
+
 async function initUpdater() {
     const button = document.getElementById('update-status');
     const label = button && button.querySelector('.update-label');
-    const api = window.pywebview && window.pywebview.api;
-    if (!button || !label || !api || !api.check_update) return;
+    const api = updaterApi();
+    if (!button || !label || !api) return;
 
     const setState = (state, text, title) => {
         button.className = `update-status is-${state}`;
@@ -2528,12 +2535,16 @@ async function initUpdater() {
         button.hidden = false;
     };
 
-    let info;
-    try {
-        info = await api.check_update();
-    } catch (e) {
-        return; // hors ligne ou erreur : rien à afficher
+    let info = null;
+    for (let attempt = 1; attempt <= 3 && !info; attempt++) {
+        try {
+            info = await api.check_update();
+        } catch (e) {
+            info = null;
+            await new Promise((resolve) => setTimeout(resolve, 1500)); // nouvel essai
+        }
     }
+    if (!info) return; // hors ligne ou erreur persistante : rien à afficher
     if (info && info.available) {
         setState('available', 'Mettre à jour', `Version ${info.version} disponible : cliquer pour mettre à jour`);
     } else if (info && info.up_to_date) {
@@ -2563,7 +2574,7 @@ async function initUpdater() {
 // on lance donc le contrôle dès que l'API est disponible, par l'événement ou par une vérification répétée.
 let updaterStarted = false;
 function startUpdaterOnce() {
-    if (updaterStarted || !(window.pywebview && window.pywebview.api)) return;
+    if (updaterStarted || !updaterApi()) return;
     updaterStarted = true;
     initUpdater();
 }
@@ -2572,7 +2583,7 @@ let updaterAttempts = 0;
 const updaterTimer = setInterval(() => {
     startUpdaterOnce();
     updaterAttempts += 1;
-    if (updaterStarted || updaterAttempts > 50) clearInterval(updaterTimer); // 10 s maximum
+    if (updaterStarted || updaterAttempts > 150) clearInterval(updaterTimer); // 30 s maximum
 }, 200);
 
 document.addEventListener('DOMContentLoaded', () => {
