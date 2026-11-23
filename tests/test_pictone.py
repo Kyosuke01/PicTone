@@ -663,8 +663,11 @@ def test_apply_menu_states_mac_matches_titles_that_include_shortcuts(monkeypatch
             return self._sub
 
     class Menu:
-        def __init__(self, items):
-            self.items, self.auto = items, True
+        def __init__(self, items, title=""):
+            self.items, self.auto, self._title = items, True, title
+
+        def title(self):
+            return self._title
 
         def numberOfItems(self):
             return len(self.items)
@@ -677,8 +680,8 @@ def test_apply_menu_states_mac_matches_titles_that_include_shortcuts(monkeypatch
 
     for item in (items := [Item(t) for t in NATIVE_TITLES]):
         item.setEnabled_ = lambda value, item=item: setattr(item, "enabled", value)
-    file_menu = Menu(items)
-    top = Item("Fichier")
+    file_menu = Menu(items, title="Fichier")  # comme dans AppKit : le titre est porté par le sous-menu
+    top = Item("NSMenuItem")
     top._sub = file_menu
     main_menu = Menu([top])
 

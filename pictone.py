@@ -404,7 +404,8 @@ def _apply_menu_states_mac(labels, states):
             submenu = top.submenu()
             if submenu is None:
                 continue
-            if str(top.title()) in OWN_MENU_TITLES:
+            # Le titre (« Fichier »…) est porté par le sous-menu : celui de l'élément du haut vaut « NSMenuItem ».
+            if str(submenu.title()) in OWN_MENU_TITLES:
                 # Sans ceci, AppKit réactive chaque élément au moment d'ouvrir le menu.
                 submenu.setAutoenablesItems_(False)
             for j in range(submenu.numberOfItems()):
