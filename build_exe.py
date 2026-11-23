@@ -18,6 +18,13 @@ VERSION_INFO_FILE = ROOT / "file_version_info.txt"
 ICNS_FILE = ROOT / "pictone.icns"
 
 
+def build_name(version, platform=None):
+    """Nom du livrable : PicTone_vX.X.X_OS (OS = Windows ou macOS)."""
+    platform = sys.platform if platform is None else platform
+    os_name = "Windows" if platform == "win32" else "macOS"
+    return f"{APP_NAME}_v{version}_{os_name}"
+
+
 def version_info_text(version):
     """Ressource de version Windows (propriétés du fichier .exe)."""
     vt = version_tuple(version)
@@ -34,7 +41,7 @@ VSVersionInfo(
       StringStruct('FileVersion', '{version}'),
       StringStruct('InternalName', '{APP_NAME}'),
       StringStruct('LegalCopyright', 'Copyright (c) 2026 {APP_NAME}'),
-      StringStruct('OriginalFilename', '{APP_NAME}_v{version}.exe'),
+      StringStruct('OriginalFilename', '{APP_NAME}_v{version}_Windows.exe'),
       StringStruct('ProductName', '{APP_NAME}'),
       StringStruct('ProductVersion', '{version}')])]),
     VarFileInfo([VarStruct('Translation', [1033, 1200])])
@@ -98,7 +105,7 @@ def cleanup(name):
 
 def main():
     version = get_version()
-    name = f"{APP_NAME}_v{version}"
+    name = build_name(version)
     os.chdir(ROOT)
 
     try:

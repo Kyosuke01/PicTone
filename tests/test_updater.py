@@ -13,7 +13,7 @@ import updater
 
 BASE = "https://github.com/Kyosuke01/PicTone/releases/download/v3.3.0/"
 LATEST = "https://api.github.com/repos/Kyosuke01/PicTone/releases/latest"
-SETUP_NAME = "PicTone_v3.3.0.exe"
+SETUP_NAME = "PicTone_v3.3.0_Windows.exe"
 SUMS_URL = BASE + "SHA256SUMS.txt"
 SETUP_URL = BASE + SETUP_NAME
 
@@ -174,8 +174,8 @@ def test_check_nothing_without_installer(windows_frozen, monkeypatch):
 
 def test_check_ignores_portable_and_macos_assets(windows_frozen, monkeypatch):
     assets = [
-        {"name": "PicTone_Portable_v3.3.0.exe", "browser_download_url": BASE + "PicTone_Portable_v3.3.0.exe"},
-        {"name": "PicTone_v3.3.0-macOS.dmg", "browser_download_url": BASE + "PicTone_v3.3.0-macOS.dmg"},
+        {"name": "PicTone_v3.3.0_Windows-portable.exe", "browser_download_url": BASE + "PicTone_v3.3.0_Windows-portable.exe"},
+        {"name": "PicTone_v3.3.0_macOS.dmg", "browser_download_url": BASE + "PicTone_v3.3.0_macOS.dmg"},
         {"name": "SHA256SUMS.txt", "browser_download_url": SUMS_URL},
     ]
     monkeypatch.setattr(updater, "_open", bytes_source({LATEST: release_json(assets=assets)}))
@@ -195,7 +195,7 @@ def test_check_ignores_setup_named_installer(windows_frozen, monkeypatch):
 
 def test_check_refuses_download_from_another_host(windows_frozen, monkeypatch):
     assets = [
-        {"name": SETUP_NAME, "browser_download_url": "https://evil.example/PicTone_v3.3.0.exe"},
+        {"name": SETUP_NAME, "browser_download_url": "https://evil.example/PicTone_v3.3.0_Windows.exe"},
         {"name": "SHA256SUMS.txt", "browser_download_url": SUMS_URL},
     ]
     monkeypatch.setattr(updater, "_open", bytes_source({LATEST: release_json(assets=assets)}))
