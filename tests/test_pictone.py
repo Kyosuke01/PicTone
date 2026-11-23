@@ -294,7 +294,7 @@ def test_webview2_without_winreg_module_is_assumed_present(monkeypatch):
 
 def _api(window=None):
     api = pictone.PicToneAPI()
-    api.window = window
+    api._window = window
     return api
 
 
@@ -414,7 +414,7 @@ def test_install_update_failure_is_reported_and_window_kept(monkeypatch, log_dir
 
     monkeypatch.setattr(updater, "install", failing)
     assert api.install_update() == {"ok": False, "error": "corrompu"}
-    assert api.window.destroyed is False
+    assert api._window.destroyed is False
 
 
 def test_install_update_success_closes_window(monkeypatch):
@@ -424,7 +424,7 @@ def test_install_update_success_closes_window(monkeypatch):
     api._update = {"available": True, "exe_url": "https://example/x"}
     monkeypatch.setattr(updater, "install", lambda update: None)
     assert api.install_update() == {"ok": True}
-    assert api.window.destroyed is True
+    assert api._window.destroyed is True
 
 
 def test_install_update_success_forces_process_exit(monkeypatch):
@@ -498,7 +498,7 @@ def test_main_creates_window_and_starts_app(monkeypatch, fake_webview, is_window
     assert kwargs["width"] == 1300 and kwargs["height"] == 820
     assert kwargs["resizable"] is True
     assert kwargs["url"] == pictone.resource_path("web", "index.html")
-    assert kwargs["js_api"].window is fake_webview.window
+    assert kwargs["js_api"]._window is fake_webview.window
     start = fake_webview.started[0]
     assert start["http_server"] is True
     assert start["private_mode"] is False

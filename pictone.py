@@ -154,7 +154,7 @@ updater.LOGGER = _update_log
 
 class PicToneAPI:
     def __init__(self):
-        self.window = None
+        self._window = None
         self._update = {"available": False}
 
     def get_version(self):
@@ -191,8 +191,8 @@ class PicToneAPI:
         except Exception as exc:
             log_error("Installation de mise à jour :\n" + traceback.format_exc(), file_name="update.log")
             return {"ok": False, "error": str(exc)}
-        if self.window is not None:
-            self.window.destroy()
+        if self._window is not None:
+            self._window.destroy()
         # destroy() ne termine pas toujours le processus (macOS) : le script de remplacement
         # attend sa fermeture, on force donc la sortie peu après que la réponse est envoyée.
         _schedule_exit()
@@ -200,7 +200,7 @@ class PicToneAPI:
 
     def save_file(self, data_url, filename):
         """Ouvre la boîte « Enregistrer sous » et écrit l'image décodée."""
-        if self.window is None:
+        if self._window is None:
             return False
 
         import webview
@@ -215,7 +215,7 @@ class PicToneAPI:
             save_dialog = webview.SAVE_DIALOG
 
         try:
-            target = self.window.create_file_dialog(
+            target = self._window.create_file_dialog(
                 dialog_type=save_dialog, save_filename=filename, file_types=file_types
             )
             if isinstance(target, (list, tuple)):
@@ -266,7 +266,7 @@ def main():
     import webview
 
     api = PicToneAPI()
-    api.window = webview.create_window(
+    api._window = webview.create_window(
         title=f"{APP_NAME}  —  v{CURRENT_VERSION}",
         url=resource_path("web", "index.html"),
         js_api=api,
