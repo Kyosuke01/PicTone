@@ -2734,3 +2734,37 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize custom scrollbar drag and track-click events
     initScrollbarEvents();
 });
+
+// TEST TEMPORAIRE (à retirer) : affiche version installée, dernière version et statut.
+(function initTestUpdateCheck() {
+    const btn = document.getElementById('test-update-check');
+    const modal = document.getElementById('test-update-modal');
+    const text = document.getElementById('test-update-text');
+    const close = document.getElementById('test-update-close');
+    if (!btn || !modal || !text || !close) return;
+
+    close.addEventListener('click', () => { modal.hidden = true; });
+    btn.addEventListener('click', async () => {
+        const api = updaterApi();
+        modal.hidden = false;
+        if (!api) {
+            text.innerHTML = '<b>API pywebview indisponible</b> : le contrôle ne peut pas être lancé.';
+            return;
+        }
+        text.textContent = 'Vérification…';
+        let current = '?';
+        let info = null;
+        let error = '';
+        try { current = await api.get_version(); } catch (e) { error += `Version : ${e}. `; }
+        try { info = await api.check_update(); } catch (e) { error += `Contrôle : ${e}. `; }
+
+        let latest = '?';
+        let status = 'Inconnu (contrôle impossible : hors ligne ou mode développement)';
+        if (info && info.available) { latest = info.version; status = 'Mettre à jour'; }
+        else if (info && info.up_to_date) { latest = info.version; status = 'À jour'; }
+        text.innerHTML = `Version actuelle : <b>${current}</b><br>`
+            + `Dernière version disponible : <b>${latest}</b><br>`
+            + `Statut : <b>${status}</b>`
+            + (error ? `<br><small>${error}</small>` : '');
+    });
+})();
