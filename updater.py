@@ -169,6 +169,19 @@ def update_log_path():
 # Windows : installeur silencieux
 # ---------------------------------------------------------------------------
 
+def _clean_pyinstaller_env():
+    """Environnement du script de mise à jour, sans l'état PyInstaller de l'instance en cours.
+
+    Le bootloader --onefile laisse dans l'environnement (_PYI_APPLICATION_HOME_DIR, _PYI_ARCHIVE_FILE…)
+    le dossier _MEIxxxx qu'il a extrait. Le nouvel exe, installé au même chemin, se croirait alors un
+    sous-processus de l'ancienne instance et chercherait python311.dll dans ce dossier, supprimé à la sortie
+    (« Failed to load Python DLL »). PYINSTALLER_RESET_ENVIRONMENT=1 force une instance indépendante.
+    """
+    env = {k: v for k, v in os.environ.items() if not k.startswith("_PYI_") and k != "_MEIPASS2"}
+    env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+    return env
+
+
 def install(update):
     """Télécharge l'installeur, vérifie son empreinte, puis le lance en silencieux.
 
@@ -192,7 +205,8 @@ def install(update):
     exe_name = os.path.basename(current_exe)
     log_file = update_log_path()
     installer_log = os.path.join(os.path.dirname(log_file), "installer.txt")
-    _log(f"Installation Windows : exe={current_exe}, dossier={app_dir}, pid={pid}")
+    _log(f"Installation Windows : exe={current_exe}, dossier={app_dir}, pid={pid}, "
+         f"dossier PyInstaller={getattr(sys, '_MEIPASS', None)}")
     _log(f"Installeur téléchargé : {setup} ; journal de l'installeur : {installer_log}")
     lines = [
         "@echo off",
@@ -229,6 +243,7 @@ def install(update):
         "set /a TRY=0",
         ":launch",
         "set /a TRY+=1",
+        "set PYINSTALLER_RESET_ENVIRONMENT=1",
         f'start "" "{current_exe}"',
         # Vérifie que le processus existe ; sinon (ex. extraction _MEI perturbée par l'antivirus), on réessaie.
         "ping 127.0.0.1 -n 5 -w 1000 >nul",
@@ -239,7 +254,7 @@ def install(update):
         "ping 127.0.0.1 -n 4 -w 1000 >nul",
         "goto launch",
         ":launched",
-        f'echo [%DATE% %TIME%] script : PicTone relance (essai %TRY%)>>"%LOG%"',
+        f'echo [%DATE% %TIME%] script : processus PicTone detecte (essai %TRY%) - ne prouve pas un demarrage reussi>>"%LOG%"',
         ":cleanup",
         'del /f /q "%~f0" >nul 2>&1',
     ]
@@ -250,7 +265,7 @@ def install(update):
 
     # Pas de DETACHED_PROCESS : il donnerait une fenêtre console à chaque commande du script.
     flags = CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW if sys.platform == "win32" else 0
-    subprocess.Popen(["cmd", "/c", script], creationflags=flags, close_fds=True)
+    subprocess.Popen(["cmd", "/c", script], creationflags=flags, close_fds=True, env=_clean_pyinstaller_env())
     _log("Installeur lancé : PicTone va se fermer puis redémarrer.")
 
 

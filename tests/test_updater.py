@@ -503,3 +503,27 @@ def test_install_macos_restores_previous_app_when_copy_fails(mac_app):
     # En cas d'échec de la copie, l'ancienne version est remise en place
     assert f'mv "{mac_app.work / "previous.app"}" "{mac_app.app}"' in script
     assert f'ditto "{mac_app.staged}" "{mac_app.app}"' in script  # copie de la nouvelle version
+
+
+def test_clean_pyinstaller_env_drops_onefile_state_and_requests_reset(monkeypatch):
+    monkeypatch.setenv("_PYI_APPLICATION_HOME_DIR", r"C:\\Temp\\_MEI1")
+    monkeypatch.setenv("_PYI_ARCHIVE_FILE", r"C:\\PicTone.exe")
+    monkeypatch.setenv("_MEIPASS2", r"C:\\Temp\\_MEI1")
+    monkeypatch.setenv("PICTONE_KEEP", "ok")
+    env = updater._clean_pyinstaller_env()
+    assert not any(k.startswith("_PYI_") for k in env) and "_MEIPASS2" not in env
+    assert env["PYINSTALLER_RESET_ENVIRONMENT"] == "1"
+    assert env["PICTONE_KEEP"] == "ok"                      # le reste de l'environnement est conservé
+
+
+def test_install_launches_script_with_clean_environment(monkeypatch, installed_app):
+    content = b"x"
+    monkeypatch.setattr(updater, "_expected_hash", lambda url, name: hashlib.sha256(content).hexdigest())
+    monkeypatch.setattr(updater, "_open", bytes_source({SETUP_URL: content}))
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(updater, "_batch_encoding", lambda: "utf-8")
+    monkeypatch.setenv("_PYI_APPLICATION_HOME_DIR", r"C:\\Temp\\_MEI1")
+    updater.install(UPDATE)
+    _, kwargs = installed_app.launched[0]
+    assert "_PYI_APPLICATION_HOME_DIR" not in kwargs["env"]
+    assert kwargs["env"]["PYINSTALLER_RESET_ENVIRONMENT"] == "1"
