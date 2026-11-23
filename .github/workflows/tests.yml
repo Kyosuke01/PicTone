@@ -29,7 +29,7 @@ jobs:
         run: python -m pytest
 
   macos:
-    name: Tests macOS et .dmg
+    name: Tests macOS
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
