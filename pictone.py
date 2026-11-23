@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import traceback
 import webbrowser
@@ -138,6 +139,11 @@ def is_webview2_installed():
 # API exposée au JavaScript (window.pywebview.api.*)
 # ---------------------------------------------------------------------------
 
+def _schedule_exit(delay=1.5):
+    """Termine le processus après delay secondes (laisse le temps de répondre au JavaScript)."""
+    threading.Timer(delay, os._exit, args=(0,)).start()
+
+
 def _update_log(message):
     """Journal des mises à jour : update.log dans le même dossier que crash_log.txt."""
     log_error(message, file_name="update.log")
@@ -187,6 +193,9 @@ class PicToneAPI:
             return {"ok": False, "error": str(exc)}
         if self.window is not None:
             self.window.destroy()
+        # destroy() ne termine pas toujours le processus (macOS) : le script de remplacement
+        # attend sa fermeture, on force donc la sortie peu après que la réponse est envoyée.
+        _schedule_exit()
         return {"ok": True}
 
     def save_file(self, data_url, filename):

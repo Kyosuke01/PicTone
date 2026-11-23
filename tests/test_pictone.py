@@ -419,6 +419,7 @@ def test_install_update_failure_is_reported_and_window_kept(monkeypatch, log_dir
 
 def test_install_update_success_closes_window(monkeypatch):
     monkeypatch.setattr(updater, "can_self_update", lambda: True)
+    monkeypatch.setattr(pictone, "_schedule_exit", lambda: None)
     api = _api(FakeWindow())
     api._update = {"available": True, "exe_url": "https://example/x"}
     monkeypatch.setattr(updater, "install", lambda update: None)
@@ -426,8 +427,20 @@ def test_install_update_success_closes_window(monkeypatch):
     assert api.window.destroyed is True
 
 
+def test_install_update_success_forces_process_exit(monkeypatch):
+    monkeypatch.setattr(updater, "can_self_update", lambda: True)
+    scheduled = []
+    monkeypatch.setattr(pictone, "_schedule_exit", lambda: scheduled.append(True))
+    api = _api(FakeWindow())
+    api._update = {"available": True, "exe_url": "https://example/x"}
+    monkeypatch.setattr(updater, "install", lambda update: None)
+    api.install_update()
+    assert scheduled == [True]
+
+
 def test_install_update_success_without_window(monkeypatch):
     monkeypatch.setattr(updater, "can_self_update", lambda: True)
+    monkeypatch.setattr(pictone, "_schedule_exit", lambda: None)
     api = _api(None)
     api._update = {"available": True, "exe_url": "https://example/x"}
     monkeypatch.setattr(updater, "install", lambda update: None)
