@@ -316,7 +316,6 @@ async function handleFile(file) {
 
             emptyState.classList.add('hidden');
             imageViewer.classList.remove('hidden');
-            historyToolbar.classList.remove('hidden');
             updateControlStates();
 
             // Clear and size persistent memory canvases
@@ -2358,6 +2357,9 @@ function updateControlStates() {
         section.inert = !sectionsActive;
     });
 
+    // Annuler / Rétablir : visibles en permanence, grisés sans image ou sans action à annuler/rétablir
+    btnUndo.disabled      = !hasImage || historyIdx <= 0;
+    btnRedo.disabled      = !hasImage || historyIdx >= history.length - 1;
     btnSave.disabled      = !sectionsActive;
     btnReset.disabled     = !sectionsActive;
     btnCropStart.disabled = !sectionsActive;
@@ -2382,10 +2384,19 @@ function updateControlStates() {
 }
 
 // Envoie à Python les commandes disponibles (menus natifs grisés si indisponibles)
+let lastPublishedStates = '';
 function publishCommandStates(states) {
+    const json = JSON.stringify(states);
+    if (json === lastPublishedStates) return;
     const api = window.pywebview && window.pywebview.api;
-    if (!api || typeof api.set_command_states !== 'function') return;
-    Promise.resolve(api.set_command_states(states)).catch(() => {});
+    if (!api || typeof api.set_command_states !== 'function') {
+        updLog('menus : API non prête, états non envoyés');
+        return;
+    }
+    lastPublishedStates = json;
+    Promise.resolve(api.set_command_states(states))
+        .then((ok) => updLog(`menus : états envoyés (ok=${ok}) ${json}`))
+        .catch((e) => updLog(`menus : ÉCHEC d'envoi : ${e && e.message ? e.message : e}`));
 }
 
 btnUndo.addEventListener('click', () => {
@@ -2531,7 +2542,6 @@ btnReset.addEventListener('click', async () => {
 
         emptyState.classList.remove('hidden');
         imageViewer.classList.add('hidden');
-        historyToolbar.classList.add('hidden');
         updateControlStates();
 
         baseDrawCanvasSplit.width = 1;
@@ -2585,70 +2595,115 @@ function updLog(message) {
     }
 }
 
-async function initUpdater() {
+// ---------------------------------------------------------------------------
+// Bouton de mise à jour : un seul état, mis à jour par le démarrage, la vérification
+// périodique, le retour sur l'application et le menu « Vérifier les mises à jour ».
+// ---------------------------------------------------------------------------
+
+const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000; // vérification toutes les 30 min
+const UPDATE_FOCUS_MIN_GAP_MS = 5 * 60 * 1000;   // retour sur l'app : au plus toutes les 5 min
+let updateState = { status: 'none', version: '' }; // none | ok | available
+let updateBusy = false;   // téléchargement ou redémarrage en cours
+let updateClickBound = false;
+let lastUpdateCheck = 0;
+
+function setUpdateButton(state, text, title) {
     const button = document.getElementById('update-status');
     const label = button && button.querySelector('.update-label');
-    const api = updaterApi();
-    if (!button || !label || !api) {
-        updLog(`initialisation annulée : bouton=${!!button}, libellé=${!!label}, API=${!!api}`);
-        return;
+    if (!button || !label) return;
+    button.className = `update-status is-${state}`;
+    button.disabled = state === 'ok' || state === 'busy';
+    label.textContent = text;
+    button.title = title;
+    button.hidden = false;
+}
+
+function applyUpdateInfo(info) {
+    if (updateBusy) return; // pendant un téléchargement, le bouton reste tel quel
+    if (info && info.available) {
+        updateState = { status: 'available', version: info.version };
+        setUpdateButton('available', 'Mettre à jour', `Version ${info.version} disponible : cliquer pour mettre à jour`);
+    } else if (info && info.up_to_date) {
+        updateState = { status: 'ok', version: info.version };
+        setUpdateButton('ok', 'À jour', `PicTone ${info.version} est à jour`);
+    } else {
+        updateState = { status: 'none', version: '' };
     }
-    updLog(`initialisation : API prête, contrôle de la version (user agent : ${navigator.userAgent})`);
+    updLog(`état de la mise à jour : ${updateState.status} ${updateState.version}`);
+}
 
-    const setState = (state, text, title) => {
-        button.className = `update-status is-${state}`;
-        button.disabled = state === 'ok' || state === 'busy';
-        label.textContent = text;
-        button.title = title;
-        button.hidden = false;
-        updLog(`état du bouton : ${state} (« ${text} »)`);
-    };
-
+// Demande à Python (GitHub) s'il y a une mise à jour. Renvoie l'info, ou null si le contrôle échoue.
+async function checkForUpdates() {
+    const api = updaterApi();
+    if (!api) return null;
+    lastUpdateCheck = Date.now();
     let info = null;
     for (let attempt = 1; attempt <= 3 && !info; attempt++) {
         try {
             info = await api.check_update();
             updLog(`contrôle (essai ${attempt}) : ${JSON.stringify(info)}`);
         } catch (e) {
-            info = null;
             updLog(`contrôle (essai ${attempt}) : erreur : ${e && e.message ? e.message : e}`);
-            await new Promise((resolve) => setTimeout(resolve, 1500)); // nouvel essai
+            await new Promise((resolve) => setTimeout(resolve, 1500));
         }
     }
-    if (!info) {
-        updLog('contrôle abandonné après 3 essais : bouton masqué');
-        return; // hors ligne ou erreur persistante : rien à afficher
-    }
-    if (info && info.available) {
-        setState('available', 'Mettre à jour', `Version ${info.version} disponible : cliquer pour mettre à jour`);
-    } else if (info && info.up_to_date) {
-        setState('ok', 'À jour', `PicTone ${info.version} est à jour`);
-    } else {
-        updLog('aucune mise à jour applicable (mode développement ou plateforme non prise en charge)');
+    if (info) applyUpdateInfo(info);
+    return info;
+}
+
+// Menu « Vérifier les mises à jour » : même contrôle, avec le résultat affiché.
+async function checkUpdatesWithReport() {
+    const info = await checkForUpdates();
+    let text;
+    if (!info) text = 'Impossible de vérifier les mises à jour (hors ligne ou mode développement).';
+    else if (info.available) text = `Mise à jour disponible : ${info.version}.\nUtilisez le bouton « Mettre à jour ».`;
+    else if (info.up_to_date) text = `PicTone ${info.version} est à jour.`;
+    else text = 'Mise à jour non applicable sur cette plateforme.';
+    setTimeout(() => alert(text), 0);
+}
+
+async function installUpdate() {
+    const api = updaterApi();
+    if (!api || updateBusy || updateState.status !== 'available') {
+        updLog(`clic ignoré : API=${!!api}, occupé=${updateBusy}, état=${updateState.status}`);
         return;
     }
-
-    button.addEventListener('click', async () => {
-        updLog(`clic sur le bouton (classe : ${button.className})`);
-        if (!button.classList.contains('is-available')) {
-            updLog('clic ignoré : le bouton n\'est pas en état « disponible »');
+    updateBusy = true;
+    setUpdateButton('busy', 'Téléchargement…', 'Téléchargement de la mise à jour');
+    try {
+        updLog('appel de install_update()');
+        const result = await api.install_update();
+        updLog(`réponse de install_update() : ${JSON.stringify(result)}`);
+        if (!result.ok) throw new Error(result.error);
+        if (result.manual) {
+            updateBusy = false;
+            setUpdateButton('available', 'Mettre à jour', 'Téléchargement ouvert dans le navigateur');
             return;
         }
-        setState('busy', 'Téléchargement…', 'Téléchargement de la mise à jour');
-        try {
-            updLog('appel de install_update()');
-            const result = await api.install_update();
-            updLog(`réponse de install_update() : ${JSON.stringify(result)}`);
-            if (!result.ok) throw new Error(result.error);
-            if (result.manual) {
-                setState('available', 'Mettre à jour', 'Téléchargement ouvert dans le navigateur');
-                return;
-            }
-            setState('busy', 'Redémarrage…', 'PicTone va redémarrer');
-        } catch (e) {
-            updLog(`ÉCHEC de la mise à jour : ${e && e.message ? e.message : e}`);
-            setState('available', 'Réessayer', `Échec : ${e.message}`);
-        }
+        setUpdateButton('busy', 'Redémarrage…', 'PicTone va redémarrer');
+    } catch (e) {
+        updLog(`ÉCHEC de la mise à jour : ${e && e.message ? e.message : e}`);
+        updateBusy = false;
+        setUpdateButton('available', 'Réessayer', `Échec : ${e && e.message ? e.message : e}`);
+    }
+}
+
+async function initUpdater() {
+    const button = document.getElementById('update-status');
+    if (!button || !updaterApi()) {
+        updLog('initialisation annulée : bouton ou API absent');
+        return;
+    }
+    updLog(`initialisation : API prête (user agent : ${navigator.userAgent})`);
+    if (!updateClickBound) {
+        updateClickBound = true;
+        button.addEventListener('click', installUpdate);
+    }
+    await checkForUpdates();
+    // Détection automatique : pas de webhook possible pour une app de bureau, on interroge GitHub périodiquement.
+    setInterval(() => { if (!updateBusy) checkForUpdates(); }, UPDATE_CHECK_INTERVAL_MS);
+    window.addEventListener('focus', () => {
+        if (!updateBusy && Date.now() - lastUpdateCheck > UPDATE_FOCUS_MIN_GAP_MS) checkForUpdates();
     });
 }
 
@@ -2915,6 +2970,7 @@ window.picToneCommand = (cmd) => {
         case 'panelFilters':   click('stab-filters'); break;
         case 'panelDraw':      click('stab-draw'); break;
         case 'panelTransform': click('stab-transform'); break;
+        case 'checkUpdates':   checkUpdatesWithReport(); break;
         default: updLog(`commande de menu inconnue : ${cmd}`);
     }
     updLog(`commande de menu : ${cmd}`);

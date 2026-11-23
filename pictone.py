@@ -180,9 +180,11 @@ class PicToneAPI:
     def set_command_states(self, states):
         """Reçoit de l'interface les commandes disponibles : les éléments de menu correspondants sont grisés sinon."""
         if not isinstance(states, dict):
+            _update_log(f"menus : états invalides reçus : {states!r}")
             return False
-        apply_menu_states(self._window, self._menu_labels,
-                          {str(k): bool(v) for k, v in states.items()})
+        clean = {str(k): bool(v) for k, v in states.items()}
+        _update_log(f"menus : {len(clean)} états reçus, {len(self._menu_labels)} libellés connus")
+        apply_menu_states(self._window, self._menu_labels, clean)
         return True
 
     def log_js(self, message):
@@ -314,22 +316,6 @@ def _show_message(api, text):
         log_error("Message de menu :\n" + traceback.format_exc())
 
 
-def _check_updates_from_menu(api):
-    """Aide > Vérifier les mises à jour : contrôle puis affiche le résultat."""
-    try:
-        info = api.check_update()
-    except Exception:
-        _show_message(api, "Impossible de vérifier les mises à jour.")
-        return
-    if info.get("available"):
-        text = f"Version {CURRENT_VERSION} installée.\nMise à jour disponible : {info.get('version')}.\nUtilisez le bouton « Mettre à jour »."
-    elif info.get("up_to_date"):
-        text = f"PicTone {CURRENT_VERSION} est à jour."
-    else:
-        text = "Impossible de vérifier les mises à jour (hors ligne ou mode développement)."
-    _show_message(api, text)
-
-
 def build_menus(api):
     """Menus de l'application, en données : {'title', 'items'} ; items = commande, action ou séparateur."""
     def item(title, name=None, action=None):
@@ -362,7 +348,7 @@ def build_menus(api):
             item("Panneau Transformer", "panelTransform"),
         ]},
         {"title": "Aide", "items": [
-            item("Vérifier les mises à jour", action=lambda: _check_updates_from_menu(api)),
+            item("Vérifier les mises à jour", "checkUpdates"),
             item(f"À propos de {APP_NAME}", action=lambda: _show_message(
                 api, f"{APP_NAME} {CURRENT_VERSION}\nÉditeur d'images local.")),
         ]},
@@ -395,9 +381,17 @@ def _apply_menu_states_mac(labels, states):
     from PyObjCTools import AppHelper
 
     def run():
+        try:
+            _run()
+        except Exception:
+            _update_log("menus macOS : ERREUR :\n" + traceback.format_exc())
+
+    def _run():
         main_menu = NSApplication.sharedApplication().mainMenu()
         if main_menu is None:
+            _update_log("menus macOS : barre de menus introuvable")
             return
+        matched = 0
         for i in range(main_menu.numberOfItems()):
             top = main_menu.itemAtIndex_(i)
             submenu = top.submenu()
@@ -411,6 +405,8 @@ def _apply_menu_states_mac(labels, states):
                 command = labels.get(str(item.title()))
                 if command in states:
                     item.setEnabled_(bool(states[command]))
+                    matched += 1
+        _update_log(f"menus macOS : {matched} éléments mis à jour")
 
     AppHelper.callAfter(run)
 
@@ -424,14 +420,20 @@ def _apply_menu_states_windows(window, labels, states):
         return
 
     def run():
-        for control in form.Controls:
-            if control.GetType().Name != "MenuStrip":
-                continue
-            for top in control.Items:
-                for sub in top.DropDownItems:
-                    command = labels.get(str(sub.Text))
-                    if command in states:
-                        sub.Enabled = bool(states[command])
+        try:
+            matched = 0
+            for control in form.Controls:
+                if control.GetType().Name != "MenuStrip":
+                    continue
+                for top in control.Items:
+                    for sub in top.DropDownItems:
+                        command = labels.get(str(sub.Text))
+                        if command in states:
+                            sub.Enabled = bool(states[command])
+                            matched += 1
+            _update_log(f"menus Windows : {matched} éléments mis à jour")
+        except Exception:
+            _update_log("menus Windows : ERREUR :\n" + traceback.format_exc())
 
     form.Invoke(Action(run))
 
@@ -443,8 +445,10 @@ def apply_menu_states(window, labels, states):
             _apply_menu_states_mac(labels, states)
         elif IS_WINDOWS and window is not None:
             _apply_menu_states_windows(window, labels, states)
+        else:
+            _update_log("menus : plateforme sans gestion des menus, états ignorés")
     except Exception:
-        log_error("Mise à jour des menus :\n" + traceback.format_exc())
+        _update_log("menus : ERREUR lors de la mise à jour :\n" + traceback.format_exc())
 
 
 def to_pywebview_menus(spec):

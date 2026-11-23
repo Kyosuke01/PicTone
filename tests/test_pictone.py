@@ -579,14 +579,11 @@ def test_help_menu_shows_version_message(monkeypatch):
     assert window.scripts[0].startswith("setTimeout(() => alert(")
 
 
-def test_check_updates_menu_reports_up_to_date(monkeypatch):
-    monkeypatch.setattr(pictone, "CURRENT_VERSION", "3.3.0")
+def test_check_updates_menu_asks_interface_to_check(monkeypatch):
     window = _CommandWindow()
-    api = _menu_api(window)
-    monkeypatch.setattr(api, "check_update", lambda: {"available": False, "up_to_date": True, "version": "3.3.0"})
-    menus = pictone.build_menus(api)
+    menus = pictone.build_menus(_menu_api(window))
     _find_item(menus, "Aide", "Vérifier")["action"]()
-    assert "est à jour" in window.scripts[0]
+    assert window.scripts == ["picToneCommand('checkUpdates')"]
 
 
 def test_to_pywebview_menus_converts_structure(fake_webview):
@@ -603,7 +600,7 @@ def test_command_labels_map_native_titles_to_commands(monkeypatch):
     labels = pictone.command_labels(spec)
     assert labels["Enregistrer l'image…"] == "save"
     assert labels["Annuler"] == "undo"
-    assert "Vérifier les mises à jour" not in labels  # action sans commande d'interface
+    assert labels["Vérifier les mises à jour"] == "checkUpdates"
 
 
 def test_set_command_states_forwards_booleans_to_menus(monkeypatch):

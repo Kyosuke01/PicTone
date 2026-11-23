@@ -65,7 +65,7 @@ body {
     background: var(--bg-hover);
     color: var(--text-main);
 }
-.toolbar-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.toolbar-btn:disabled { color: #444444; opacity: 1; cursor: not-allowed; }
 
 /* Body Container split (Workspace Left / Sidebar Right) */
 .app-body {
@@ -609,9 +609,9 @@ input[type="color"] {
     border-color: var(--accent-hover);
 }
 .btn-primary:disabled {
-    background-color: var(--accent-disabled);
-    border-color: var(--accent-disabled);
-    color: var(--text-disabled);
+    background-color: #2e2e2e;   /* gris neutre : désactivé, pas bleu */
+    border-color: #3c3c3c;
+    color: #6b6b6b;
     cursor: not-allowed;
 }
 .btn-secondary {
