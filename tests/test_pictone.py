@@ -369,12 +369,17 @@ def test_save_file_invalid_data_url_returns_false_and_logs(fake_webview, tmp_pat
 
 def test_check_update_reports_available_version(monkeypatch):
     monkeypatch.setattr(updater, "check", lambda current: {"available": True, "version": "3.3.0", "exe_name": "x"})
-    assert _api().check_update() == {"available": True, "version": "3.3.0"}
+    assert _api().check_update() == {"available": True, "version": "3.3.0", "up_to_date": False}
 
 
 def test_check_update_reports_nothing_available(monkeypatch):
     monkeypatch.setattr(updater, "check", lambda current: {"available": False})
-    assert _api().check_update() == {"available": False, "version": ""}
+    assert _api().check_update() == {"available": False, "version": "", "up_to_date": False}
+
+
+def test_check_update_reports_up_to_date(monkeypatch):
+    monkeypatch.setattr(updater, "check", lambda current: {"available": False, "up_to_date": True, "version": "3.3.1"})
+    assert _api().check_update() == {"available": False, "version": "3.3.1", "up_to_date": True}
 
 
 def test_check_update_passes_current_version_to_updater(monkeypatch):
@@ -390,7 +395,7 @@ def test_check_update_error_is_swallowed_and_logged(monkeypatch, log_dir):
         raise RuntimeError("réseau coupé")
 
     monkeypatch.setattr(updater, "check", broken)
-    assert _api().check_update() == {"available": False, "version": ""}
+    assert _api().check_update() == {"available": False, "version": "", "up_to_date": False}
     assert "Vérification de mise à jour" in open(log_dir / "crash_log.txt", encoding="utf-8").read()
 
 

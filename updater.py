@@ -54,8 +54,10 @@ def check(current_version):
         return none
 
     latest = _parse(release.get("tag_name"))
-    if latest is None or latest <= current:
+    if latest is None:
         return none
+    if latest <= current:
+        return {"available": False, "up_to_date": True, "version": ".".join(map(str, latest))}
 
     assets = {
         a.get("name", ""): a.get("browser_download_url", "")

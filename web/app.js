@@ -2515,35 +2515,48 @@ btnReset.addEventListener('click', async () => {
 // ---------------------------------------------------------------------------
 
 async function initUpdater() {
-    const banner = document.getElementById('update-banner');
-    const text = document.getElementById('update-text');
-    const btnInstall = document.getElementById('update-install');
-    const btnLater = document.getElementById('update-later');
+    const button = document.getElementById('update-status');
     const api = window.pywebview && window.pywebview.api;
-    if (!banner || !api || !api.check_update) return;
+    if (!button || !api || !api.check_update) return;
 
+    const showAvailable = (version) => {
+        button.className = 'update-status is-available';
+        button.disabled = false;
+        button.textContent = `Mettre à jour vers ${version}`;
+        button.title = `La version ${version} est disponible`;
+        button.hidden = false;
+    };
+    const showUpToDate = (version) => {
+        button.className = 'update-status is-ok';
+        button.disabled = true;
+        button.textContent = 'À jour';
+        button.title = `PicTone ${version} est à jour`;
+        button.hidden = false;
+    };
+
+    let info;
     try {
-        const info = await api.check_update();
-        if (!info || !info.available) return;
-        text.textContent = `La version ${info.version} est disponible.`;
-        banner.hidden = false;
+        info = await api.check_update();
     } catch (e) {
-        return;
+        return; // hors ligne ou erreur : rien à afficher
     }
+    if (info && info.available) showAvailable(info.version);
+    else if (info && info.up_to_date) showUpToDate(info.version);
+    else return; // pas de mise à jour applicable (ex. macOS, mode développement)
 
-    btnLater.addEventListener('click', () => { banner.hidden = true; });
-    btnInstall.addEventListener('click', async () => {
-        btnInstall.disabled = true;
-        btnLater.disabled = true;
-        text.textContent = 'Téléchargement de la mise à jour…';
+    button.addEventListener('click', async () => {
+        if (!button.classList.contains('is-available')) return;
+        button.disabled = true;
+        button.textContent = 'Téléchargement…';
         try {
             const result = await api.install_update();
             if (!result.ok) throw new Error(result.error);
-            text.textContent = 'Redémarrage…';
+            button.textContent = 'Redémarrage…';
         } catch (e) {
-            text.textContent = `Échec de la mise à jour : ${e.message}`;
-            btnInstall.disabled = false;
-            btnLater.disabled = false;
+            button.className = 'update-status is-available';
+            button.disabled = false;
+            button.textContent = 'Réessayer la mise à jour';
+            button.title = `Échec : ${e.message}`;
         }
     });
 }
