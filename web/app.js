@@ -2561,7 +2561,21 @@ async function initUpdater() {
     });
 }
 
-window.addEventListener('pywebviewready', initUpdater);
+// L'événement « pywebviewready » peut être émis avant le chargement de ce script (defer) :
+// on lance donc le contrôle dès que l'API est disponible, par l'événement ou par une vérification répétée.
+let updaterStarted = false;
+function startUpdaterOnce() {
+    if (updaterStarted || !(window.pywebview && window.pywebview.api)) return;
+    updaterStarted = true;
+    initUpdater();
+}
+window.addEventListener('pywebviewready', startUpdaterOnce);
+let updaterAttempts = 0;
+const updaterTimer = setInterval(() => {
+    startUpdaterOnce();
+    updaterAttempts += 1;
+    if (updaterStarted || updaterAttempts > 50) clearInterval(updaterTimer); // 10 s maximum
+}, 200);
 
 document.addEventListener('DOMContentLoaded', () => {
     updateHistoryButtons();
