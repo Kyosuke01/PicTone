@@ -236,7 +236,26 @@ class PicToneAPI:
 # Point d'entrée
 # ---------------------------------------------------------------------------
 
+def _setup_webview_log():
+    """Journal de pywebview (pywebview.log) : indique pourquoi l'API JavaScript n'est pas exposée."""
+    import logging
+
+    for directory in _log_candidates():
+        try:
+            os.makedirs(directory, exist_ok=True)
+            handler = logging.FileHandler(os.path.join(directory, "pywebview.log"), encoding="utf-8")
+        except OSError:
+            continue
+        handler.setFormatter(logging.Formatter("[%(asctime)s] %(name)s %(levelname)s: %(message)s"))
+        for name in ("pywebview", "webview"):
+            logger = logging.getLogger(name)
+            logger.setLevel(logging.DEBUG)
+            logger.addHandler(handler)
+        return
+
+
 def main():
+    _setup_webview_log()
     if not is_webview2_installed():
         show_error(
             "Le runtime Microsoft Edge WebView2 est requis pour lancer PicTone.\n\n"
