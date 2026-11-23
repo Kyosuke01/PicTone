@@ -65,7 +65,7 @@ body {
     background: var(--bg-hover);
     color: var(--text-main);
 }
-.toolbar-btn:disabled { color: #444444; opacity: 1; cursor: not-allowed; }
+.toolbar-btn:disabled { color: #444444; opacity: 1; cursor: default; }
 
 /* Body Container split (Workspace Left / Sidebar Right) */
 .app-body {
@@ -263,7 +263,7 @@ body {
 .controls-section.disabled .filter-item {
     opacity: 0.45;
     filter: grayscale(1);
-    cursor: not-allowed;
+    cursor: default;
 }
 /* Filtre « Aucun » actif : pas de bordure ni de fond bleu tant que la section est inactive */
 .controls-section.disabled .filter-item.active,
@@ -619,7 +619,7 @@ input[type="color"] {
     background-color: #2e2e2e;   /* gris neutre : désactivé, pas bleu */
     border-color: #3c3c3c;
     color: #6b6b6b;
-    cursor: not-allowed;
+    cursor: default;
 }
 .btn-secondary {
     background-color: transparent;
@@ -633,7 +633,7 @@ input[type="color"] {
 .btn-secondary:disabled {
     border-color: #252525;
     color: var(--text-disabled);
-    cursor: not-allowed;
+    cursor: default;
 }
 .btn-small {
     padding: 6px 12px;
@@ -687,7 +687,7 @@ input[type="color"] {
 /* Sans image : gris neutre, jamais de bleu d'accent */
 .format-btn:disabled {
     color: #555555;
-    cursor: not-allowed;
+    cursor: default;
 }
 .format-btn.active:disabled {
     background: #2e2e2e;
@@ -1334,3 +1334,16 @@ body.eraser-mode .draw-canvas { cursor: none; }
 .update-status.is-busy .update-icon { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 4v11' stroke='%23f5a623' stroke-width='3.2' stroke-linecap='round'/%3E%3Ccircle cx='12' cy='19.5' r='1.9' fill='%23f5a623'/%3E%3C/svg%3E"); }
 .update-status.is-available { cursor: pointer; }
 .update-status:disabled { cursor: default; }
+
+/* Éléments désactivés : aucun effet au survol (ni contour, ni couleur, ni curseur spécial).
+   Sans événement souris, aucune règle :hover / :focus ne peut s'appliquer. */
+button:disabled,
+input:disabled,
+select:disabled,
+.controls-section.disabled,
+.controls-section.disabled * {
+    pointer-events: none;
+    cursor: default;
+    outline: none;
+    box-shadow: none;
+}
