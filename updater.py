@@ -189,6 +189,7 @@ def install(update):
     # Exécutable PyInstaller en mode fichier unique : le processus réel (pid) est un enfant du
     # bootloader (ppid), qui nettoie son dossier temporaire _MEI à sa sortie. On attend les deux.
     ppid = os.getppid() if getattr(sys, "_MEIPASS", None) else None
+    exe_name = os.path.basename(current_exe)
     log_file = update_log_path()
     installer_log = os.path.join(os.path.dirname(log_file), "installer.txt")
     _log(f"Installation Windows : exe={current_exe}, dossier={app_dir}, pid={pid}")
@@ -221,11 +222,24 @@ def install(update):
         ":run",
         # Délai de sécurité : Windows libère les fichiers du bootloader après la sortie.
         "ping 127.0.0.1 -n 3 -w 1000 >nul",
-        f'echo [%DATE% %TIME%] script : PicTone fermé, lancement de l\'installeur>>"%LOG%"',
+        # Messages sans accents : cmd les écrit dans sa page de codes, pas en UTF-8.
+        f'echo [%DATE% %TIME%] script : PicTone ferme, lancement de l\'installeur>>"%LOG%"',
         f'"{setup}" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR="{app_dir}" /LOG="{installer_log}"',
-        f'echo [%DATE% %TIME%] script : installeur terminé, code retour %ERRORLEVEL%>>"%LOG%"',
+        f'echo [%DATE% %TIME%] script : installeur termine, code retour %ERRORLEVEL%>>"%LOG%"',
+        "set /a TRY=0",
+        ":launch",
+        "set /a TRY+=1",
         f'start "" "{current_exe}"',
-        f'echo [%DATE% %TIME%] script : PicTone relancé>>"%LOG%"',
+        # Vérifie que le processus existe ; sinon (ex. extraction _MEI perturbée par l'antivirus), on réessaie.
+        "ping 127.0.0.1 -n 5 -w 1000 >nul",
+        f'tasklist /FI "IMAGENAME eq {exe_name}" /NH 2>nul | find /I "{exe_name}" >nul',
+        "if not errorlevel 1 goto launched",
+        f'echo [%DATE% %TIME%] script : PicTone ne demarre pas (essai %TRY%)>>"%LOG%"',
+        "if %TRY% GEQ 3 goto cleanup",
+        "ping 127.0.0.1 -n 4 -w 1000 >nul",
+        "goto launch",
+        ":launched",
+        f'echo [%DATE% %TIME%] script : PicTone relance (essai %TRY%)>>"%LOG%"',
         ":cleanup",
         'del /f /q "%~f0" >nul 2>&1',
     ]
