@@ -256,9 +256,14 @@ body {
 .controls-section.disabled > * {
     opacity: 0.3;
 }
-/* Les vignettes restent lisibles avant l'import : on voit le rendu de chaque filtre d'avance */
+/* Filtres inactifs (pas d'image) : grisés, mais les vignettes restent visibles en aperçu */
 .controls-section.disabled > .filters-list {
     opacity: 1;
+}
+.controls-section.disabled .filter-item {
+    opacity: 0.45;
+    filter: grayscale(1);
+    cursor: not-allowed;
 }
 
 /* Filters List (sober vertical buttons) */

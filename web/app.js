@@ -316,12 +316,8 @@ async function handleFile(file) {
 
             emptyState.classList.add('hidden');
             imageViewer.classList.remove('hidden');
-            controlsSection.classList.remove('disabled');
-            drawControls.classList.remove('disabled');
-            transformControls.classList.remove('disabled');
             historyToolbar.classList.remove('hidden');
-            btnSave.disabled  = false;
-            btnReset.disabled = false;
+            updateControlStates();
 
             // Clear and size persistent memory canvases
             baseDrawCanvasSplit.width = img.naturalWidth;
@@ -2010,6 +2006,7 @@ function startCrop() {
     if (!originalImage || !uncroppedBaseImage) return;
 
     isCropping = true;
+    updateControlStates();
     cropOverlay.classList.remove('hidden');
     document.body.classList.remove('draw-mode');
     document.body.classList.remove('eraser-mode');
@@ -2077,6 +2074,7 @@ function startCrop() {
 
 function cancelCrop() {
     isCropping = false;
+    updateControlStates();
     cropOverlay.classList.add('hidden');
 
     // Restore rotation preview
@@ -2134,6 +2132,7 @@ function applyCrop() {
     newImg.onload = () => {
         originalImage = newImg;
         isCropping = false;
+        updateControlStates();
         cropOverlay.classList.add('hidden');
         updateViewerTransform(); // Restore rotation preview
         updateAfterTransform();
@@ -2270,7 +2269,8 @@ function pushHistory() {
         src:       originalImage.src,
         drawSplit: baseDrawCanvasSplit.toDataURL(),
         drawSide:  baseDrawCanvasEdit.toDataURL(),
-        cropRectInBase: cropRectInBase ? { ...cropRectInBase } : null
+        cropRectInBase: cropRectInBase ? { ...cropRectInBase } : null,
+        hasDraw:   canvasHasInk(baseDrawCanvasSplit)
     };
 
     // Truncate future if we branched
@@ -2332,6 +2332,38 @@ function restoreHistory(state) {
 function updateHistoryButtons() {
     btnUndo.disabled = historyIdx <= 0;
     btnRedo.disabled = historyIdx >= history.length - 1;
+    updateControlStates();
+}
+
+// Vrai si le canvas contient au moins un pixel non transparent
+function canvasHasInk(canvas) {
+    if (!canvas || !canvas.width || !canvas.height) return false;
+    const data = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+    for (let i = 3; i < data.length; i += 4) {
+        if (data[i] !== 0) return true;
+    }
+    return false;
+}
+
+// Un seul endroit décide quels contrôles sont actifs ; les autres sont grisés (et inertes).
+function updateControlStates() {
+    const hasImage = !!originalImage;
+    const cropping = !!isCropping;
+    const sectionsActive = hasImage && !cropping;
+    const hasDraw = !!(history[historyIdx] && history[historyIdx].hasDraw);
+
+    [controlsSection, drawControls, transformControls].forEach((section) => {
+        if (!section) return;
+        section.classList.toggle('disabled', !sectionsActive);
+        section.inert = !sectionsActive;
+    });
+
+    btnSave.disabled      = !sectionsActive;
+    btnReset.disabled     = !sectionsActive;
+    btnCropStart.disabled = !sectionsActive;
+    btnClearDraw.disabled = !sectionsActive || !hasDraw;
+    btnCropApply.disabled  = !cropping;
+    btnCropCancel.disabled = !cropping;
 }
 
 btnUndo.addEventListener('click', () => {
@@ -2477,12 +2509,8 @@ btnReset.addEventListener('click', async () => {
 
         emptyState.classList.remove('hidden');
         imageViewer.classList.add('hidden');
-        controlsSection.classList.add('disabled');
-        drawControls.classList.add('disabled');
-        transformControls.classList.add('disabled');
         historyToolbar.classList.add('hidden');
-        btnSave.disabled  = true;
-        btnReset.disabled = true;
+        updateControlStates();
 
         baseDrawCanvasSplit.width = 1;
         baseDrawCanvasSplit.height = 1;
