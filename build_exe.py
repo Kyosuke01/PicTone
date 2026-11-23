@@ -1,6 +1,9 @@
-"""Compile PicTone en un exécutable Windows autonome (PyInstaller).
+"""Compile PicTone pour l'OS courant, dans build_portable/.
 
-Usage : python build_exe.py  ->  build_portable/PicTone_v<version>.exe (étape intermédiaire)
+- Windows : PicTone_vX.Y.Z.exe (exécutable portable, source de l'installeur).
+- macOS   : PicTone_vX.Y.Z.app (application, packagée en .dmg par le workflow de release).
+
+Usage : python build_exe.py
 """
 
 import os
@@ -10,15 +13,15 @@ import sys
 
 from build_common import APP_NAME, ROOT, get_version, version_tuple
 
-DIST_DIR = ROOT / "build_portable"  # intermédiaire : l'installeur est la seule sortie publiée
+OUT_DIR = ROOT / "build_portable"
 VERSION_INFO_FILE = ROOT / "file_version_info.txt"
+ICNS_FILE = ROOT / "pictone.icns"
 
 
-def write_version_info(version):
-    """Génère la ressource de version Windows (propriétés du .exe)."""
+def version_info_text(version):
+    """Ressource de version Windows (propriétés du fichier .exe)."""
     vt = version_tuple(version)
-    VERSION_INFO_FILE.write_text(
-        f"""# UTF-8
+    return f"""# UTF-8
 VSVersionInfo(
   ffi=FixedFileInfo(
     filevers={vt}, prodvers={vt},
@@ -37,29 +40,54 @@ VSVersionInfo(
     VarFileInfo([VarStruct('Translation', [1033, 1200])])
   ]
 )
-""",
-        encoding="utf-8",
-    )
+"""
 
 
-def pyinstaller_command(name):
-    sep = os.pathsep  # ';' sous Windows, ':' ailleurs
-    return [
-        sys.executable, "-m", "PyInstaller",
-        "--noconfirm", "--noconsole", "--onefile",
-        "--name", name,
-        "--icon", "pictone.ico",
-        "--add-data", f"web{sep}web",
-        "--add-data", f"version.txt{sep}.",
-        "--add-data", f"pictone.ico{sep}.",  # icône de la fenêtre (chargée à l'exécution)
-        "--version-file", str(VERSION_INFO_FILE),
-        "--distpath", str(DIST_DIR),
-        "--hidden-import", "webview.platforms.winforms",
-        "--hidden-import", "clr_loader",
-        "--hidden-import", "pythonnet",
-        "--collect-all", "webview",
-        "pictone.py",
+def write_version_info(version):
+    VERSION_INFO_FILE.write_text(version_info_text(version), encoding="utf-8")
+    return VERSION_INFO_FILE
+
+
+def make_icns(source, target):
+    """Génère l'icône macOS (.icns) à partir du .ico."""
+    from PIL import Image
+
+    Image.open(source).convert("RGBA").save(target, format="ICNS")
+    return target
+
+
+def pyinstaller_command(name, platform=None, sep=None):
+    """Commande PyInstaller pour la plateforme donnée (par défaut : l'OS courant)."""
+    platform = sys.platform if platform is None else platform
+    sep = os.pathsep if sep is None else sep
+    data = ["--add-data", f"web{sep}web", "--add-data", f"version.txt{sep}."]
+    base = [
+        sys.executable, "-m", "PyInstaller", "--noconfirm",
+        "--name", name, "--distpath", str(OUT_DIR), "--collect-all", "webview",
     ]
+    if platform == "win32":
+        return base + [
+            "--noconsole", "--onefile", "--icon", "pictone.ico", *data,
+            "--add-data", f"pictone.ico{sep}.",
+            "--version-file", str(VERSION_INFO_FILE),
+            "--hidden-import", "webview.platforms.winforms",
+            "--hidden-import", "clr_loader",
+            "--hidden-import", "pythonnet",
+            "pictone.py",
+        ]
+    if platform == "darwin":
+        return base + [
+            "--windowed", "--onedir", "--icon", "pictone.icns", *data,
+            "--hidden-import", "webview.platforms.cocoa",
+            "--osx-bundle-identifier", "fr.kyo.pictone",
+            "pictone.py",
+        ]
+    raise ValueError(f"Plateforme non prise en charge : {platform}")
+
+
+def artifact_path(name, platform=None):
+    platform = sys.platform if platform is None else platform
+    return OUT_DIR / (f"{name}.app" if platform == "darwin" else f"{name}.exe")
 
 
 def cleanup(name):
@@ -78,12 +106,14 @@ def main():
     except ImportError:
         sys.exit("PyInstaller est introuvable : pip install -r requirements.txt")
 
-    DIST_DIR.mkdir(exist_ok=True)
-    if sys.platform == "win32":  # évite WinError 5 si l'exe tourne encore
+    OUT_DIR.mkdir(exist_ok=True)
+    if sys.platform == "win32":
+        write_version_info(version)
         subprocess.run(["taskkill", "/F", "/IM", f"{name}.exe"],
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    elif sys.platform == "darwin":
+        make_icns(ROOT / "pictone.ico", ICNS_FILE)
 
-    write_version_info(version)
     try:
         subprocess.run(pyinstaller_command(name), check=True)
     except subprocess.CalledProcessError as e:
@@ -91,7 +121,7 @@ def main():
     finally:
         cleanup(name)
 
-    print(f"\nBuild terminé : {DIST_DIR / (name + '.exe')}")
+    print(f"\nBuild terminé : {artifact_path(name)}")
 
 
 if __name__ == "__main__":

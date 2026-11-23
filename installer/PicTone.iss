@@ -52,7 +52,7 @@ UninstallDisplayIcon={app}\PicTone.exe
 UninstallDisplayName={#AppName}
 
 ; Fichiers de sortie
-OutputDir=..\Executables
+OutputDir=..\release
 OutputBaseFilename=PicTone_v{#AppVersion}
 Compression=lzma2/max
 SolidCompression=yes

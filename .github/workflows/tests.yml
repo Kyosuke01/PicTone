@@ -1,0 +1,66 @@
+name: Tests
+
+# Lance la suite de tests sur Windows ET macOS à chaque push et pull request.
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Installer les dépendances de test
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Lancer les tests
+        run: python -m pytest
+
+  # Construit le .dmg macOS à chaque push : téléchargeable depuis la page du run (Artifacts).
+  macos-dmg:
+    name: Build .dmg macOS
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Installer les dépendances
+        run: python3 -m pip install -r requirements.txt
+
+      - name: Compiler l'application
+        run: python3 build_exe.py
+
+      - name: Créer le .dmg
+        run: |
+          VERSION="$(tr -d '[:space:]' < version.txt)"
+          STAGE="$RUNNER_TEMP/dmg"
+          mkdir -p "$STAGE" release
+          cp -R "build_portable/PicTone_v${VERSION}.app" "$STAGE/PicTone.app"
+          ln -s /Applications "$STAGE/Applications"
+          hdiutil create -volname "PicTone ${VERSION}" -srcfolder "$STAGE" -ov -format UDZO \
+            "release/PicTone_v${VERSION}-macOS.dmg"
+
+      - name: Publier le .dmg (artefact téléchargeable)
+        uses: actions/upload-artifact@v4
+        with:
+          name: PicTone-macOS-dmg
+          path: release/*.dmg
+          if-no-files-found: error

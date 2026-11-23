@@ -1,7 +1,11 @@
 name: Release
 
 # Publie une Release GitHub (tag vX.Y.Z) à chaque push sur main qui modifie version.txt.
-# Assets publiés : PicTone_vX.Y.Z.exe (installeur) et SHA256SUMS.txt. Rien d'autre.
+# Assets publiés :
+#   - PicTone_vX.Y.Z.exe            installeur Windows (utilisé par la mise à jour automatique)
+#   - PicTone_Portable_vX.Y.Z.exe   version portable Windows
+#   - PicTone_vX.Y.Z-macOS.dmg      application macOS
+#   - SHA256SUMS.txt
 on:
   push:
     branches: [main]
@@ -19,14 +23,17 @@ env:
   PYTHONUTF8: "1"
 
 jobs:
-  release:
-    runs-on: windows-latest
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      exists: ${{ steps.exists.outputs.exists }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Lire la version
         id: version
-        shell: bash
         run: |
           VERSION="$(tr -d '[:space:]' < version.txt)"
           echo "$VERSION" | grep -Eq '^[0-9]+(\.[0-9]+){1,3}$' || { echo "Version invalide : $VERSION"; exit 1; }
@@ -35,36 +42,43 @@ jobs:
 
       - name: Vérifier que la release n'existe pas déjà
         id: exists
-        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view "${{ steps.version.outputs.tag }}" >/dev/null 2>&1; then
+          if gh release view "v${{ steps.version.outputs.version }}" >/dev/null 2>&1; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
-            echo "::notice::La release ${{ steps.version.outputs.tag }} existe déjà, rien à faire."
+            echo "::notice::La release v${{ steps.version.outputs.version }} existe déjà, rien à faire."
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
+  windows:
+    needs: prepare
+    if: needs.prepare.outputs.exists == 'false'
+    runs-on: windows-latest
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
-        if: steps.exists.outputs.exists == 'false'
         with:
           python-version: "3.11"
           cache: pip
 
       - name: Installer les dépendances Python
-        if: steps.exists.outputs.exists == 'false'
         run: python -m pip install -r requirements.txt
 
-      - name: Compiler l'exécutable (étape intermédiaire)
-        if: steps.exists.outputs.exists == 'false'
+      - name: Tests unitaires
+        run: |
+          python -m pip install -r requirements-dev.txt
+          python -m pytest
+
+      - name: Compiler l'application
         run: python build_exe.py
 
-      - name: Test de démarrage de l'exécutable (avant installeur)
-        if: steps.exists.outputs.exists == 'false'
+      - name: Test de démarrage (portable, avant installeur)
         shell: pwsh
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
         run: |
           $exe = "build_portable/PicTone_v$env:VERSION.exe"
           $p = Start-Process -FilePath $exe -PassThru
@@ -79,23 +93,18 @@ jobs:
           Write-Host "Démarrage OK."
 
       - name: Compiler l'installeur (Inno Setup)
-        if: steps.exists.outputs.exists == 'false'
         shell: pwsh
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
         run: |
           choco install innosetup --no-progress -y
+          New-Item -ItemType Directory -Force release | Out-Null
           $iscc = Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6\ISCC.exe"
           & $iscc "/DAppVersion=$env:VERSION" installer\PicTone.iss
           if ($LASTEXITCODE -ne 0) { throw "Échec de la compilation de l'installeur." }
 
       - name: Tester l'installeur (installation puis désinstallation silencieuses)
-        if: steps.exists.outputs.exists == 'false'
         shell: pwsh
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          $setup = "Executables/PicTone_v$env:VERSION.exe"
+          $setup = "release/PicTone_v$env:VERSION.exe"
           $install = Join-Path $env:LOCALAPPDATA "Programs\PicTone"
           $app = Join-Path $install "PicTone.exe"
           $shortcut = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\PicTone\PicTone.lnk"
@@ -107,35 +116,103 @@ jobs:
           $p = Start-Process -FilePath $app -PassThru
           Start-Sleep -Seconds 12
           if ($p.HasExited) { throw "PicTone installé s'est fermé au démarrage (code $($p.ExitCode))." }
-          # PyInstaller --onefile lance un processus enfant : sans ça, le fichier reste verrouillé.
           Get-Process -Name PicTone -ErrorAction SilentlyContinue | Stop-Process -Force
           Start-Sleep -Seconds 2
 
-          $uninstaller = Join-Path $install "unins000.exe"
           # Inno Setup relance une copie de son désinstalleur depuis %TEMP% : on attend le résultat.
+          $uninstaller = Join-Path $install "unins000.exe"
           Start-Process -FilePath $uninstaller -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait
           $deadline = (Get-Date).AddSeconds(90)
           while ((Test-Path $app) -and ((Get-Date) -lt $deadline)) { Start-Sleep -Seconds 2 }
           if (Test-Path $app) { throw "La désinstallation n'a pas supprimé PicTone.exe." }
           Write-Host "Installation et désinstallation OK."
 
-      - name: Empreintes SHA256
-        if: steps.exists.outputs.exists == 'false'
+      - name: Préparer le portable
         shell: pwsh
+        run: Copy-Item "build_portable/PicTone_v$env:VERSION.exe" "release/PicTone_Portable_v$env:VERSION.exe"
+
+      - name: Publier les fichiers Windows (artefact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: release/*.exe
+          if-no-files-found: error
+
+  macos:
+    needs: prepare
+    if: needs.prepare.outputs.exists == 'false'
+    runs-on: macos-latest
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Installer les dépendances Python
         run: |
-          Get-ChildItem Executables -Filter *.exe | ForEach-Object {
-            $h = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
-            "$h  $($_.Name)" | Out-File -Append -Encoding ascii Executables/SHA256SUMS.txt
-          }
+          python3 -m pip install -r requirements-dev.txt
+          python3 -m pytest
+
+      - name: Compiler l'application
+        run: python3 build_exe.py
+
+      - name: Test de lancement de l'application
+        run: |
+          APP="build_portable/PicTone_v${VERSION}.app/Contents/MacOS/PicTone_v${VERSION}"
+          "$APP" > "$RUNNER_TEMP/pictone.log" 2>&1 &
+          PID=$!
+          sleep 15
+          if ! kill -0 "$PID" 2>/dev/null; then
+            cat "$RUNNER_TEMP/pictone.log"
+            echo "PicTone s'est fermé au démarrage."
+            exit 1
+          fi
+          kill "$PID"
+
+      - name: Créer le .dmg
+        run: |
+          STAGE="$RUNNER_TEMP/dmg"
+          mkdir -p "$STAGE" release
+          cp -R "build_portable/PicTone_v${VERSION}.app" "$STAGE/PicTone.app"
+          ln -s /Applications "$STAGE/Applications"
+          hdiutil create -volname "PicTone ${VERSION}" -srcfolder "$STAGE" -ov -format UDZO \
+            "release/PicTone_v${VERSION}-macOS.dmg"
+
+      - name: Publier le .dmg (artefact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: release/*.dmg
+          if-no-files-found: error
+
+  publish:
+    needs: [prepare, windows, macos]
+    if: needs.prepare.outputs.exists == 'false'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ needs.prepare.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: release
+          merge-multiple: true
+
+      - name: Empreintes SHA256
+        working-directory: release
+        run: |
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
 
       - name: Publier la release
-        if: steps.exists.outputs.exists == 'false'
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ steps.version.outputs.tag }}" \
-            Executables/PicTone_v*.exe Executables/SHA256SUMS.txt \
-            --target "${{ github.sha }}" \
-            --title "PicTone ${{ steps.version.outputs.tag }}" \
+          gh release create "$TAG" release/* \
+            --target "$GITHUB_SHA" \
+            --title "PicTone $TAG" \
             --generate-notes

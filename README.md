@@ -9,6 +9,7 @@ PicTone est un éditeur d'images local moderne, sobre et performant. Le traiteme
 - `pictone.py` : Point d'entrée (fenêtre native pywebview, enregistrement, journal d'erreurs).
 - `version.txt` : Fichier de version (source unique de la version).
 - `web/` : Interface frontend (HTML, CSS, JS).
+- `tests/` : tests unitaires (`pytest`).
 - `installer/PicTone.iss` : Script de l'installeur Windows (Inno Setup).
 - `updater.py` : Mise à jour automatique depuis les Releases GitHub.
 - `build_common.py` : Utilitaires de build partagés.
@@ -36,6 +37,24 @@ PicTone est un éditeur d'images local moderne, sobre et performant. Le traiteme
 Chaque push sur `main` qui modifie `version.txt` déclenche le workflow GitHub Actions : compilation, test de démarrage, création de l'installeur, test d'installation et de désinstallation, puis création de la Release `vX.Y.Z` avec **le seul fichier `PicTone_vX.Y.Z.exe`** (installeur) et `SHA256SUMS.txt`. Une version déjà publiée est ignorée.
 
 **Prérequis Windows :** le runtime [WebView2](https://go.microsoft.com/fwlink/p/?LinkId=2124703). En cas de plantage, un message s'affiche et le détail est dans `%LOCALAPPDATA%\PicTone\logs\crash_log.txt`.
+
+---
+
+## 🍎🪟 Versions disponibles
+
+Chaque Release contient :
+- **Windows, installeur** : `PicTone_vX.Y.Z.exe` (assistant d'installation, raccourcis, désinstallation, mise à jour automatique) ;
+- **Windows, portable** : `PicTone_Portable_vX.Y.Z.exe` (aucune installation) ;
+- **macOS** : `PicTone_vX.Y.Z-macOS.dmg`. L'application n'est pas signée par Apple : au premier lancement, faites un clic droit sur PicTone > **Ouvrir**, puis confirmez. La mise à jour automatique est disponible uniquement sous Windows.
+
+## 🧪 Tests
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
+
+Les tests tournent automatiquement sur **Windows et macOS** à chaque push et pull request (`.github/workflows/tests.yml`). La release ne démarre qu'après la même suite de tests.
 
 ---
 

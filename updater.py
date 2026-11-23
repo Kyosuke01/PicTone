@@ -1,4 +1,8 @@
-"""Mise à jour automatique de PicTone via les Releases GitHub (stdlib uniquement)."""
+"""Mise à jour automatique de PicTone via les Releases GitHub (stdlib uniquement).
+
+Windows uniquement : l'installeur de la dernière release est téléchargé, son empreinte
+SHA256 est vérifiée, puis il est lancé en silencieux pour remplacer la version installée.
+"""
 
 import hashlib
 import json
@@ -13,6 +17,11 @@ REPO = "Kyosuke01/PicTone"
 LATEST_URL = f"https://api.github.com/repos/{REPO}/releases/latest"
 DOWNLOAD_PREFIX = f"https://github.com/{REPO}/releases/download/"
 TIMEOUT = 10
+SETUP_PATTERN = re.compile(r"PicTone_v\d+(?:\.\d+){0,3}\.exe")
+SUMS_NAME = "SHA256SUMS.txt"
+DETACHED_PROCESS = 0x00000008
+CREATE_NEW_PROCESS_GROUP = 0x00000200
+CREATE_NO_WINDOW = 0x08000000
 
 
 def _parse(version):
@@ -27,11 +36,11 @@ def _open(url):
 
 
 def can_self_update():
-    return sys.platform == "win32" and getattr(sys, "frozen", False)
+    return sys.platform == "win32" and bool(getattr(sys, "frozen", False))
 
 
 def check(current_version):
-    """Renvoie {'available': bool, 'version': str, 'exe_url': str, 'sums_url': str}."""
+    """Renvoie {'available': False} ou les infos de la version plus récente."""
     none = {"available": False}
     current = _parse(current_version)
     if current is None or not can_self_update():
@@ -41,23 +50,36 @@ def check(current_version):
             release = json.load(response)
     except (OSError, ValueError):
         return none
+    if not isinstance(release, dict):
+        return none
 
     latest = _parse(release.get("tag_name"))
     if latest is None or latest <= current:
         return none
 
-    assets = {a.get("name", ""): a.get("browser_download_url", "") for a in release.get("assets", [])}
-    exe = next((n for n in assets if re.fullmatch(r"PicTone_v[\d.]+\.exe", n)), None)
-    sums = assets.get("SHA256SUMS.txt")
-    if not exe or not sums:
+    assets = {
+        a.get("name", ""): a.get("browser_download_url", "")
+        for a in (release.get("assets") or [])
+        if isinstance(a, dict)
+    }
+    setup = next((name for name in assets if SETUP_PATTERN.fullmatch(name)), None)
+    sums = assets.get(SUMS_NAME)
+    if not setup or not sums:
         return none
-    if not (assets[exe].startswith(DOWNLOAD_PREFIX) and sums.startswith(DOWNLOAD_PREFIX)):
+    # Sécurité : on ne télécharge que depuis les releases du dépôt.
+    if not (assets[setup].startswith(DOWNLOAD_PREFIX) and sums.startswith(DOWNLOAD_PREFIX)):
         return none
-    return {"available": True, "version": ".".join(map(str, latest)),
-            "exe_name": exe, "exe_url": assets[exe], "sums_url": sums}
+    return {
+        "available": True,
+        "version": ".".join(map(str, latest)),
+        "exe_name": setup,
+        "exe_url": assets[setup],
+        "sums_url": sums,
+    }
 
 
 def _expected_hash(sums_url, exe_name):
+    """Lit SHA256SUMS.txt et renvoie l'empreinte (minuscules) de exe_name."""
     with _open(sums_url) as response:
         for line in response.read().decode("utf-8", "replace").splitlines():
             digest, _, name = line.strip().partition("  ")
@@ -67,19 +89,25 @@ def _expected_hash(sums_url, exe_name):
 
 
 def _download(url, destination):
+    """Télécharge url vers destination et renvoie le SHA256 du contenu."""
     sha = hashlib.sha256()
     with _open(url) as response, open(destination, "wb") as out:
-        for chunk in iter(lambda: response.read(1024 * 256), b""):
+        for chunk in iter(lambda: response.read(256 * 1024), b""):
             sha.update(chunk)
             out.write(chunk)
     return sha.hexdigest()
 
 
+def _batch_encoding():
+    return "mbcs" if sys.platform == "win32" else "utf-8"
+
+
 def install(update):
     """Télécharge l'installeur, vérifie son empreinte, puis le lance en silencieux.
 
-    L'installeur remplace PicTone.exe dans le dossier courant ; l'app est ensuite relancée
-    par un script détaché. Lève une exception en cas d'échec avant le lancement.
+    Le script détaché attend la fermeture de cette app (l'installeur ne peut pas remplacer
+    un exe ouvert), lance l'installeur dans le même dossier, puis relance PicTone.
+    Lève une exception si le téléchargement ou la vérification échoue.
     """
     if not can_self_update():
         raise RuntimeError("La mise à jour automatique n'est disponible que dans l'application Windows.")
@@ -93,24 +121,22 @@ def install(update):
     if _download(update["exe_url"], setup) != expected:
         raise RuntimeError("Le fichier téléchargé est corrompu (empreinte SHA256 différente).")
 
-    # Le script attend que cette app soit fermée (l'installeur ne peut pas remplacer un exe ouvert),
-    # lance l'installeur en silencieux dans le même dossier, puis relance PicTone et s'efface.
+    pid = os.getpid()
+    lines = [
+        "@echo off",
+        ":wait",
+        f'tasklist /FI "PID eq {pid}" | find "{pid}" >nul',
+        "if errorlevel 1 goto run",
+        "ping 127.0.0.1 -n 2 >nul",
+        "goto wait",
+        ":run",
+        f'"{setup}" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR="{app_dir}"',
+        f'start "" "{current_exe}"',
+        'del /f /q "%~f0" >nul 2>&1',
+    ]
     script = os.path.join(work_dir, "apply_update.bat")
-    with open(script, "w", encoding="mbcs", newline="\r\n") as f:
-        f.write(
-            "@echo off\n"
-            ":wait\n"
-            f'tasklist /FI "PID eq {os.getpid()}" | find "{os.getpid()}" >nul\n'
-            "if errorlevel 1 goto run\n"
-            "ping 127.0.0.1 -n 2 >nul\n"
-            "goto wait\n"
-            ":run\n"
-            f'"{setup}" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR="{app_dir}"\n'
-            f'start "" "{current_exe}"\n'
-            'del /f /q "%~f0" >nul 2>&1\n'
-        )
-    subprocess.Popen(
-        ["cmd", "/c", script],
-        creationflags=0x00000008 | 0x00000200 | 0x08000000,  # DETACHED | NEW_GROUP | NO_WINDOW
-        close_fds=True,
-    )
+    with open(script, "w", encoding=_batch_encoding(), newline="\r\n") as f:
+        f.write("\n".join(lines) + "\n")
+
+    flags = DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW if sys.platform == "win32" else 0
+    subprocess.Popen(["cmd", "/c", script], creationflags=flags, close_fds=True)
