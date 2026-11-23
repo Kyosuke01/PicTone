@@ -18,6 +18,7 @@ LATEST_URL = f"https://api.github.com/repos/{REPO}/releases/latest"
 DOWNLOAD_PREFIX = f"https://github.com/{REPO}/releases/download/"
 TIMEOUT = 10
 SETUP_PATTERN = re.compile(r"PicTone_v\d+(?:\.\d+){0,3}_Windows\.exe")
+MAC_PATTERN = re.compile(r"PicTone_v\d+(?:\.\d+){0,3}_macOS\.dmg")
 SUMS_NAME = "SHA256SUMS.txt"
 DETACHED_PROCESS = 0x00000008
 CREATE_NEW_PROCESS_GROUP = 0x00000200
@@ -40,10 +41,13 @@ def can_self_update():
 
 
 def check(current_version):
-    """Renvoie {'available': False} ou les infos de la version plus récente."""
+    """Renvoie {'available': False} ou les infos de la version plus récente.
+
+    Vérifié sur Windows et macOS, uniquement dans l'app figée (PyInstaller).
+    """
     none = {"available": False}
     current = _parse(current_version)
-    if current is None or not can_self_update():
+    if current is None or not getattr(sys, "frozen", False):
         return none
     try:
         with _open(LATEST_URL) as response:
@@ -64,7 +68,8 @@ def check(current_version):
         for a in (release.get("assets") or [])
         if isinstance(a, dict)
     }
-    setup = next((name for name in assets if SETUP_PATTERN.fullmatch(name)), None)
+    pattern = MAC_PATTERN if sys.platform == "darwin" else SETUP_PATTERN
+    setup = next((name for name in assets if pattern.fullmatch(name)), None)
     sums = assets.get(SUMS_NAME)
     if not setup or not sums:
         return none

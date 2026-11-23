@@ -7,6 +7,7 @@ import sys
 import tempfile
 import time
 import traceback
+import webbrowser
 
 import updater
 
@@ -159,9 +160,18 @@ class PicToneAPI:
         }
 
     def install_update(self):
-        """Installe la mise à jour trouvée, puis ferme l'app (l'installeur la relance)."""
+        """Installe la mise à jour trouvée, puis ferme l'app (l'installeur la relance).
+
+        Sur macOS (app non signée), la mise à jour est téléchargée dans le navigateur.
+        """
         if not self._update.get("available"):
             return {"ok": False, "error": "Aucune mise à jour disponible."}
+        if not updater.can_self_update():
+            try:
+                webbrowser.open(self._update["exe_url"])
+            except Exception as exc:
+                return {"ok": False, "error": str(exc)}
+            return {"ok": True, "manual": True}
         try:
             updater.install(self._update)
         except Exception as exc:
