@@ -405,8 +405,9 @@ def test_install_update_without_check_is_refused(monkeypatch):
 
 
 def test_install_update_failure_is_reported_and_window_kept(monkeypatch, log_dir):
+    monkeypatch.setattr(updater, "can_self_update", lambda: True)
     api = _api(FakeWindow())
-    api._update = {"available": True}
+    api._update = {"available": True, "exe_url": "https://example/x"}
 
     def failing(update):
         raise RuntimeError("corrompu")
@@ -417,18 +418,44 @@ def test_install_update_failure_is_reported_and_window_kept(monkeypatch, log_dir
 
 
 def test_install_update_success_closes_window(monkeypatch):
+    monkeypatch.setattr(updater, "can_self_update", lambda: True)
     api = _api(FakeWindow())
-    api._update = {"available": True}
+    api._update = {"available": True, "exe_url": "https://example/x"}
     monkeypatch.setattr(updater, "install", lambda update: None)
     assert api.install_update() == {"ok": True}
     assert api.window.destroyed is True
 
 
 def test_install_update_success_without_window(monkeypatch):
+    monkeypatch.setattr(updater, "can_self_update", lambda: True)
     api = _api(None)
-    api._update = {"available": True}
+    api._update = {"available": True, "exe_url": "https://example/x"}
     monkeypatch.setattr(updater, "install", lambda update: None)
     assert api.install_update() == {"ok": True}
+
+
+def test_install_update_on_macos_opens_download_in_browser(monkeypatch):
+    monkeypatch.setattr(updater, "can_self_update", lambda: False)
+    opened = []
+    monkeypatch.setattr(pictone.webbrowser, "open", lambda url: opened.append(url) or True)
+    window = FakeWindow()
+    api = _api(window)
+    api._update = {"available": True, "exe_url": "https://github.com/x/PicTone_v3.4.0_macOS.dmg"}
+    assert api.install_update() == {"ok": True, "manual": True}
+    assert opened == ["https://github.com/x/PicTone_v3.4.0_macOS.dmg"]
+    assert window.destroyed is False  # l'app reste ouverte
+
+
+def test_install_update_on_macos_reports_browser_error(monkeypatch):
+    monkeypatch.setattr(updater, "can_self_update", lambda: False)
+
+    def broken(url):
+        raise OSError("navigateur absent")
+
+    monkeypatch.setattr(pictone.webbrowser, "open", broken)
+    api = _api(FakeWindow())
+    api._update = {"available": True, "exe_url": "https://example/x.dmg"}
+    assert api.install_update() == {"ok": False, "error": "navigateur absent"}
 
 
 # ---------------------------------------------------------------------------

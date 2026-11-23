@@ -2551,6 +2551,12 @@ async function initUpdater() {
         try {
             const result = await api.install_update();
             if (!result.ok) throw new Error(result.error);
+            if (result.manual) {
+                // macOS : le .dmg s'ouvre dans le navigateur, l'app reste ouverte
+                button.textContent = 'Téléchargement lancé';
+                button.disabled = false;
+                return;
+            }
             button.textContent = 'Redémarrage…';
         } catch (e) {
             button.className = 'update-status is-available';

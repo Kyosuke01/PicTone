@@ -113,11 +113,35 @@ def test_check_nothing_when_not_frozen(monkeypatch):
     assert updater.check("3.2.0") == {"available": False}
 
 
-def test_check_nothing_on_macos(monkeypatch):
+MAC_DMG = "PicTone_v3.3.0_macOS.dmg"
+
+
+def test_check_finds_macos_dmg(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    assets = [
+        {"name": MAC_DMG, "browser_download_url": BASE + MAC_DMG},
+        {"name": "SHA256SUMS.txt", "browser_download_url": SUMS_URL},
+    ]
+    monkeypatch.setattr(updater, "_open", bytes_source({LATEST: release_json(assets=assets)}))
+    info = updater.check("3.2.0")
+    assert info["available"] is True
+    assert info["exe_name"] == MAC_DMG
+    assert info["exe_url"] == BASE + MAC_DMG
+
+
+def test_check_ignores_windows_installer_on_macos(monkeypatch):
     monkeypatch.setattr(sys, "platform", "darwin")
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(updater, "_open", bytes_source({LATEST: release_json()}))
     assert updater.check("3.2.0") == {"available": False}
+
+
+def test_check_reports_up_to_date_on_macos(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(updater, "_open", bytes_source({LATEST: release_json(tag="v3.3.0")}))
+    assert updater.check("3.3.0") == {"available": False, "up_to_date": True, "version": "3.3.0"}
 
 
 def test_check_reports_up_to_date_for_same_version(windows_frozen, monkeypatch):
