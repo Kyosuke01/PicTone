@@ -157,6 +157,7 @@ class PicToneAPI:
     def __init__(self):
         self._window = None
         self._update = {"available": False}
+        self._menu_labels = {}
 
     def get_version(self):
         return CURRENT_VERSION
@@ -175,6 +176,14 @@ class PicToneAPI:
         }
         _update_log(f"Réponse envoyée à l'interface : {result}")
         return result
+
+    def set_command_states(self, states):
+        """Reçoit de l'interface les commandes disponibles : les éléments de menu correspondants sont grisés sinon."""
+        if not isinstance(states, dict):
+            return False
+        apply_menu_states(self._window, self._menu_labels,
+                          {str(k): bool(v) for k, v in states.items()})
+        return True
 
     def log_js(self, message):
         """Reçoit les traces de l'interface (bouton « Mettre à jour ») dans update.log."""
@@ -324,7 +333,7 @@ def _check_updates_from_menu(api):
 def build_menus(api):
     """Menus de l'application, en données : {'title', 'items'} ; items = commande, action ou séparateur."""
     def item(title, name=None, action=None):
-        entry = {"title": title}
+        entry = {"title": title, "command": name}
         entry["action"] = action if action is not None else (lambda: _send_command(api, name))
         return entry
 
@@ -359,6 +368,75 @@ def build_menus(api):
         ]},
     ]
     return menus
+
+
+def command_labels(spec):
+    """{libellé natif : commande} pour les éléments de menu qui pilotent l'interface."""
+    labels = {}
+
+    def walk(entries):
+        for entry in entries:
+            if "items" in entry:
+                walk(entry["items"])
+            elif entry.get("command"):
+                labels[entry["title"].split("  (")[0].strip()] = entry["command"]
+
+    walk(spec)
+    return labels
+
+
+def _apply_menu_states_mac(labels, states):
+    """macOS : active ou grise les éléments de la barre de menus (thread principal)."""
+    from AppKit import NSApplication
+    from PyObjCTools import AppHelper
+
+    def run():
+        main_menu = NSApplication.sharedApplication().mainMenu()
+        if main_menu is None:
+            return
+        for i in range(main_menu.numberOfItems()):
+            submenu = main_menu.itemAtIndex_(i).submenu()
+            if submenu is None:
+                continue
+            for j in range(submenu.numberOfItems()):
+                item = submenu.itemAtIndex_(j)
+                command = labels.get(str(item.title()))
+                if command in states:
+                    item.setEnabled_(bool(states[command]))
+
+    AppHelper.callAfter(run)
+
+
+def _apply_menu_states_windows(window, labels, states):
+    """Windows : active ou grise les éléments de la barre de menus de la fenêtre (thread de l'UI)."""
+    from System import Action
+
+    form = window.native
+    if form is None:
+        return
+
+    def run():
+        for control in form.Controls:
+            if control.GetType().Name != "MenuStrip":
+                continue
+            for top in control.Items:
+                for sub in top.DropDownItems:
+                    command = labels.get(str(sub.Text))
+                    if command in states:
+                        sub.Enabled = bool(states[command])
+
+    form.Invoke(Action(run))
+
+
+def apply_menu_states(window, labels, states):
+    """Applique l'état des commandes aux menus natifs. Ne lève jamais d'exception."""
+    try:
+        if IS_MAC:
+            _apply_menu_states_mac(labels, states)
+        elif IS_WINDOWS and window is not None:
+            _apply_menu_states_windows(window, labels, states)
+    except Exception:
+        log_error("Mise à jour des menus :\n" + traceback.format_exc())
 
 
 def to_pywebview_menus(spec):
@@ -416,7 +494,9 @@ def main():
 
     # http_server=True : évite les restrictions file:// de WebView2 (et WebKit).
     start_kwargs = {"http_server": True, "private_mode": False}
-    start_kwargs["menu"] = to_pywebview_menus(build_menus(api))
+    menu_spec = build_menus(api)
+    api._menu_labels = command_labels(menu_spec)
+    start_kwargs["menu"] = to_pywebview_menus(menu_spec)
     start_kwargs["localization"] = MAC_MENU_LOCALIZATION
     icon_path = resource_path("pictone.ico")
     if IS_WINDOWS and os.path.isfile(icon_path):

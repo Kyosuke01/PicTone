@@ -2364,6 +2364,28 @@ function updateControlStates() {
     btnClearDraw.disabled = !sectionsActive || !hasDraw;
     btnCropApply.disabled  = !cropping;
     btnCropCancel.disabled = !cropping;
+
+    // Les éléments des menus natifs suivent le même état
+    publishCommandStates({
+        open: true,
+        save: sectionsActive,
+        reset: sectionsActive,
+        undo: !btnUndo.disabled,
+        redo: !btnRedo.disabled,
+        zoomIn: hasImage,
+        zoomOut: hasImage,
+        zoomReset: hasImage,
+        panelFilters: true,
+        panelDraw: true,
+        panelTransform: true,
+    });
+}
+
+// Envoie à Python les commandes disponibles (menus natifs grisés si indisponibles)
+function publishCommandStates(states) {
+    const api = window.pywebview && window.pywebview.api;
+    if (!api || typeof api.set_command_states !== 'function') return;
+    Promise.resolve(api.set_command_states(states)).catch(() => {});
 }
 
 btnUndo.addEventListener('click', () => {
@@ -2637,6 +2659,7 @@ function startUpdaterOnce() {
     if (updaterStarted || !updaterApi()) return;
     updaterStarted = true;
     initUpdater();
+    updateControlStates(); // l'API est prête : on envoie l'état initial aux menus natifs
 }
 window.addEventListener('pywebviewready', startUpdaterOnce);
 let updaterAttempts = 0;

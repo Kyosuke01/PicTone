@@ -595,3 +595,26 @@ def test_to_pywebview_menus_converts_structure(fake_webview):
     assert [m.title for m in converted] == ["Fichier", "Édition", "Affichage", "Aide"]
     file_items = converted[0].items
     assert type(file_items[0]).__name__ == "MenuAction"
+
+
+def test_command_labels_map_native_titles_to_commands(monkeypatch):
+    monkeypatch.setattr(pictone, "IS_MAC", True)
+    spec = pictone.build_menus(_menu_api(_CommandWindow()))
+    labels = pictone.command_labels(spec)
+    assert labels["Enregistrer l'image…"] == "save"
+    assert labels["Annuler"] == "undo"
+    assert "Vérifier les mises à jour" not in labels  # action sans commande d'interface
+
+
+def test_set_command_states_forwards_booleans_to_menus(monkeypatch):
+    sent = []
+    monkeypatch.setattr(pictone, "apply_menu_states", lambda window, labels, states: sent.append(states))
+    api = _menu_api(_CommandWindow())
+    api._menu_labels = {"Annuler": "undo"}
+    assert api.set_command_states({"undo": 0, "save": "yes"}) is True
+    assert sent == [{"undo": False, "save": True}]
+
+
+def test_set_command_states_rejects_non_dict(monkeypatch):
+    monkeypatch.setattr(pictone, "apply_menu_states", lambda *a: pytest.fail("ne doit pas être appelé"))
+    assert _menu_api(_CommandWindow()).set_command_states(["undo"]) is False
