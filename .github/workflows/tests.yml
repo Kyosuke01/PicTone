@@ -53,10 +53,10 @@ jobs:
           VERSION="$(tr -d '[:space:]' < version.txt)"
           STAGE="$RUNNER_TEMP/dmg"
           mkdir -p "$STAGE" release
-          cp -R "build_portable/PicTone_v${VERSION}.app" "$STAGE/PicTone.app"
+          cp -R "build_portable/PicTone_v${VERSION}_macOS.app" "$STAGE/PicTone.app"
           ln -s /Applications "$STAGE/Applications"
           hdiutil create -volname "PicTone ${VERSION}" -srcfolder "$STAGE" -ov -format UDZO \
-            "release/PicTone_v${VERSION}-macOS.dmg"
+            "release/PicTone_v${VERSION}_macOS.dmg"
 
       - name: Publier le .dmg (artefact téléchargeable)
         uses: actions/upload-artifact@v4

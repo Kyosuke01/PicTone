@@ -2,9 +2,9 @@ name: Release
 
 # Publie une Release GitHub (tag vX.Y.Z) à chaque push sur main qui modifie version.txt.
 # Assets publiés :
-#   - PicTone_vX.Y.Z.exe            installeur Windows (utilisé par la mise à jour automatique)
-#   - PicTone_Portable_vX.Y.Z.exe   version portable Windows
-#   - PicTone_vX.Y.Z-macOS.dmg      application macOS
+#   - PicTone_vX.Y.Z_Windows.exe           installeur Windows (utilisé par la mise à jour automatique)
+#   - PicTone_vX.Y.Z_Windows-portable.exe  version portable Windows
+#   - PicTone_vX.Y.Z_macOS.dmg             application macOS
 #   - SHA256SUMS.txt
 on:
   push:
@@ -80,7 +80,7 @@ jobs:
       - name: Test de démarrage (portable, avant installeur)
         shell: pwsh
         run: |
-          $exe = "build_portable/PicTone_v$env:VERSION.exe"
+          $exe = "build_portable/PicTone_v${env:VERSION}_Windows.exe"
           $p = Start-Process -FilePath $exe -PassThru
           Start-Sleep -Seconds 12
           if ($p.HasExited) {
@@ -104,7 +104,7 @@ jobs:
       - name: Tester l'installeur (installation puis désinstallation silencieuses)
         shell: pwsh
         run: |
-          $setup = "release/PicTone_v$env:VERSION.exe"
+          $setup = "release/PicTone_v${env:VERSION}_Windows.exe"
           $install = Join-Path $env:LOCALAPPDATA "Programs\PicTone"
           $app = Join-Path $install "PicTone.exe"
           $shortcut = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\PicTone\PicTone.lnk"
@@ -129,7 +129,7 @@ jobs:
 
       - name: Préparer le portable
         shell: pwsh
-        run: Copy-Item "build_portable/PicTone_v$env:VERSION.exe" "release/PicTone_Portable_v$env:VERSION.exe"
+        run: Copy-Item "build_portable/PicTone_v${env:VERSION}_Windows.exe" "release/PicTone_v${env:VERSION}_Windows-portable.exe"
 
       - name: Publier les fichiers Windows (artefact)
         uses: actions/upload-artifact@v4
@@ -162,7 +162,7 @@ jobs:
 
       - name: Test de lancement de l'application
         run: |
-          APP="build_portable/PicTone_v${VERSION}.app/Contents/MacOS/PicTone_v${VERSION}"
+          APP="build_portable/PicTone_v${VERSION}_macOS.app/Contents/MacOS/PicTone_v${VERSION}_macOS"
           "$APP" > "$RUNNER_TEMP/pictone.log" 2>&1 &
           PID=$!
           sleep 15
@@ -177,10 +177,10 @@ jobs:
         run: |
           STAGE="$RUNNER_TEMP/dmg"
           mkdir -p "$STAGE" release
-          cp -R "build_portable/PicTone_v${VERSION}.app" "$STAGE/PicTone.app"
+          cp -R "build_portable/PicTone_v${VERSION}_macOS.app" "$STAGE/PicTone.app"
           ln -s /Applications "$STAGE/Applications"
           hdiutil create -volname "PicTone ${VERSION}" -srcfolder "$STAGE" -ov -format UDZO \
-            "release/PicTone_v${VERSION}-macOS.dmg"
+            "release/PicTone_v${VERSION}_macOS.dmg"
 
       - name: Publier le .dmg (artefact)
         uses: actions/upload-artifact@v4

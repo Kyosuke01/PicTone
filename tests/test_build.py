@@ -65,7 +65,7 @@ def test_version_info_declares_every_string_field():
         "CompanyName": "PicTone",
         "InternalName": "PicTone",
         "LegalCopyright": "Copyright (c) 2026 PicTone",
-        "OriginalFilename": "PicTone_v3.2.1.exe",
+        "OriginalFilename": "PicTone_v3.2.1_Windows.exe",
         "ProductName": "PicTone",
         "ProductVersion": "3.2.1",
         "FileVersion": "3.2.1",
@@ -81,7 +81,7 @@ def test_version_info_contains_numeric_and_string_versions():
     assert "filevers=(3, 2, 1, 0)" in text
     assert "prodvers=(3, 2, 1, 0)" in text
     assert "StringStruct('FileVersion', '3.2.1')" in text
-    assert "StringStruct('OriginalFilename', 'PicTone_v3.2.1.exe')" in text
+    assert "StringStruct('OriginalFilename', 'PicTone_v3.2.1_Windows.exe')" in text
 
 
 def test_write_version_info_writes_to_target(monkeypatch, tmp_path):
@@ -242,7 +242,7 @@ def build_sandbox(monkeypatch, tmp_path):
         info_at_build.append(build_exe.VERSION_INFO_FILE.exists())
         (tmp_path / "build_portable").mkdir(exist_ok=True)
         (tmp_path / "build").mkdir(exist_ok=True)  # artefacts créés par PyInstaller
-        (tmp_path / "PicTone_v5.1.0.spec").write_text("x")
+        (tmp_path / f"{build_exe.build_name('5.1.0')}.spec").write_text("x")
         return subprocess.CompletedProcess(args, 0)
 
     monkeypatch.setattr(build_exe.subprocess, "run", fake_run)
@@ -254,11 +254,11 @@ def test_main_runs_pyinstaller_with_check_and_cleans_up(build_sandbox, monkeypat
     build_exe.main()
     pyinstaller_calls = [r for r in build_sandbox.runs if "PyInstaller" in r]
     assert len(pyinstaller_calls) == 1
-    assert pyinstaller_calls[0][pyinstaller_calls[0].index("--name") + 1] == "PicTone_v5.1.0"
+    assert pyinstaller_calls[0][pyinstaller_calls[0].index("--name") + 1] == "PicTone_v5.1.0_macOS"
     assert any(k.get("check") is True for k in build_sandbox.kwargs_seen)
     assert (build_sandbox.root / "pictone.icns").read_bytes()[:4] == b"icns"
     assert not (build_sandbox.root / "build").exists()
-    assert not (build_sandbox.root / "PicTone_v5.1.0.spec").exists()
+    assert not (build_sandbox.root / "PicTone_v5.1.0_macOS.spec").exists()
     assert not (build_sandbox.root / "file_version_info.txt").exists()
 
 
@@ -266,7 +266,7 @@ def test_main_on_windows_writes_version_info_then_builds_exe(build_sandbox, monk
     monkeypatch.setattr(sys, "platform", "win32")
     build_exe.main()
     assert build_sandbox.info_at_build == [True]  # ressource de version présente pendant le build
-    assert ["taskkill", "/F", "/IM", "PicTone_v5.1.0.exe"] in build_sandbox.runs
+    assert ["taskkill", "/F", "/IM", "PicTone_v5.1.0_Windows.exe"] in build_sandbox.runs
     pyi = [r for r in build_sandbox.runs if "PyInstaller" in r][0]
     assert "--onefile" in pyi and "--noconsole" in pyi
     assert not (build_sandbox.root / "file_version_info.txt").exists()
