@@ -58,7 +58,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Préparer Python 3.11 (Mac personnel)
+        if: runner.environment == 'self-hosted'
+        run: |
+          brew install python@3.11 || true
+          "$(brew --prefix python@3.11)/bin/python3.11" -m venv "$RUNNER_TEMP/venv"
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+
       - uses: actions/setup-python@v5
+        if: runner.environment == 'github-hosted'
         with:
           python-version: "3.11"
           cache: pip
