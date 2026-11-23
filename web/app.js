@@ -2521,11 +2521,29 @@ function updaterApi() {
     return api && typeof api.check_update === 'function' ? api : null;
 }
 
+// Traces de la mise à jour : console, puis update.log côté Python (si l'API est disponible).
+function updLog(message) {
+    const text = `${new Date().toISOString()} ${message}`;
+    console.log('[maj]', text);
+    try {
+        const api = updaterApi();
+        if (api && typeof api.log_js === 'function') {
+            Promise.resolve(api.log_js(text)).catch(() => {});
+        }
+    } catch (e) {
+        // journalisation facultative : jamais bloquante
+    }
+}
+
 async function initUpdater() {
     const button = document.getElementById('update-status');
     const label = button && button.querySelector('.update-label');
     const api = updaterApi();
-    if (!button || !label || !api) return;
+    if (!button || !label || !api) {
+        updLog(`initialisation annulée : bouton=${!!button}, libellé=${!!label}, API=${!!api}`);
+        return;
+    }
+    updLog(`initialisation : API prête, contrôle de la version (user agent : ${navigator.userAgent})`);
 
     const setState = (state, text, title) => {
         button.className = `update-status is-${state}`;
@@ -2533,31 +2551,44 @@ async function initUpdater() {
         label.textContent = text;
         button.title = title;
         button.hidden = false;
+        updLog(`état du bouton : ${state} (« ${text} »)`);
     };
 
     let info = null;
     for (let attempt = 1; attempt <= 3 && !info; attempt++) {
         try {
             info = await api.check_update();
+            updLog(`contrôle (essai ${attempt}) : ${JSON.stringify(info)}`);
         } catch (e) {
             info = null;
+            updLog(`contrôle (essai ${attempt}) : erreur : ${e && e.message ? e.message : e}`);
             await new Promise((resolve) => setTimeout(resolve, 1500)); // nouvel essai
         }
     }
-    if (!info) return; // hors ligne ou erreur persistante : rien à afficher
+    if (!info) {
+        updLog('contrôle abandonné après 3 essais : bouton masqué');
+        return; // hors ligne ou erreur persistante : rien à afficher
+    }
     if (info && info.available) {
         setState('available', 'Mettre à jour', `Version ${info.version} disponible : cliquer pour mettre à jour`);
     } else if (info && info.up_to_date) {
         setState('ok', 'À jour', `PicTone ${info.version} est à jour`);
     } else {
-        return; // pas de mise à jour applicable (mode développement)
+        updLog('aucune mise à jour applicable (mode développement ou plateforme non prise en charge)');
+        return;
     }
 
     button.addEventListener('click', async () => {
-        if (!button.classList.contains('is-available')) return;
+        updLog(`clic sur le bouton (classe : ${button.className})`);
+        if (!button.classList.contains('is-available')) {
+            updLog('clic ignoré : le bouton n\'est pas en état « disponible »');
+            return;
+        }
         setState('busy', 'Téléchargement…', 'Téléchargement de la mise à jour');
         try {
+            updLog('appel de install_update()');
             const result = await api.install_update();
+            updLog(`réponse de install_update() : ${JSON.stringify(result)}`);
             if (!result.ok) throw new Error(result.error);
             if (result.manual) {
                 setState('available', 'Mettre à jour', 'Téléchargement ouvert dans le navigateur');
@@ -2565,6 +2596,7 @@ async function initUpdater() {
             }
             setState('busy', 'Redémarrage…', 'PicTone va redémarrer');
         } catch (e) {
+            updLog(`ÉCHEC de la mise à jour : ${e && e.message ? e.message : e}`);
             setState('available', 'Réessayer', `Échec : ${e.message}`);
         }
     });
@@ -2735,47 +2767,3 @@ document.addEventListener('DOMContentLoaded', () => {
     initScrollbarEvents();
 });
 
-// TEST TEMPORAIRE (à retirer) : affiche version installée, dernière version et statut.
-(function initTestUpdateCheck() {
-    const btn = document.getElementById('test-update-check');
-    const modal = document.getElementById('test-update-modal');
-    const text = document.getElementById('test-update-text');
-    const close = document.getElementById('test-update-close');
-    if (!btn || !modal || !text || !close) return;
-
-    close.addEventListener('click', () => { modal.hidden = true; });
-    btn.addEventListener('click', async () => {
-        modal.hidden = false;
-        text.textContent = 'Vérification…';
-        // Attend jusqu'à 5 s que l'API pywebview expose ses méthodes.
-        let api = updaterApi();
-        for (let i = 0; !api && i < 25; i++) {
-            await new Promise((resolve) => setTimeout(resolve, 200));
-            api = updaterApi();
-        }
-        if (!api) {
-            const pw = window.pywebview;
-            const keys = pw && pw.api ? Object.keys(pw.api).join(', ') || '(aucune)' : '(absent)';
-            text.innerHTML = '<b>API pywebview indisponible</b> : le contrôle ne peut pas être lancé.'
-                + `<br><small>window.pywebview : ${pw ? 'présent' : 'absent'}<br>`
-                + `api : ${pw && pw.api ? 'présent' : 'absent'}<br>`
-                + `méthodes exposées : ${keys}</small>`;
-            return;
-        }
-        text.textContent = 'Vérification…';
-        let current = '?';
-        let info = null;
-        let error = '';
-        try { current = await api.get_version(); } catch (e) { error += `Version : ${e}. `; }
-        try { info = await api.check_update(); } catch (e) { error += `Contrôle : ${e}. `; }
-
-        let latest = '?';
-        let status = 'Inconnu (contrôle impossible : hors ligne ou mode développement)';
-        if (info && info.available) { latest = info.version; status = 'Mettre à jour'; }
-        else if (info && info.up_to_date) { latest = info.version; status = 'À jour'; }
-        text.innerHTML = `Version actuelle : <b>${current}</b><br>`
-            + `Dernière version disponible : <b>${latest}</b><br>`
-            + `Statut : <b>${status}</b>`
-            + (error ? `<br><small>${error}</small>` : '');
-    });
-})();

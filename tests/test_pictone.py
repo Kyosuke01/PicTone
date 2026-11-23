@@ -506,3 +506,9 @@ def test_main_creates_window_and_starts_app(monkeypatch, fake_webview, is_window
         assert start["icon"] == pictone.resource_path("pictone.ico")
     else:
         assert "icon" not in start
+
+
+def test_log_js_writes_interface_traces_to_update_log(log_dir):
+    assert _api().log_js("clic sur le bouton") is True
+    text = open(log_dir / "update.log", encoding="utf-8").read()
+    assert "[interface] clic sur le bouton" in text

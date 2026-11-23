@@ -167,30 +167,48 @@ class PicToneAPI:
         except Exception:
             log_error("Vérification de mise à jour :\n" + traceback.format_exc())
             self._update = {"available": False}
-        return {
+        result = {
             "available": bool(self._update.get("available")),
             "version": self._update.get("version", ""),
             "up_to_date": bool(self._update.get("up_to_date")),
         }
+        _update_log(f"Réponse envoyée à l'interface : {result}")
+        return result
+
+    def log_js(self, message):
+        """Reçoit les traces de l'interface (bouton « Mettre à jour ») dans update.log."""
+        _update_log(f"[interface] {str(message)[:500]}")
+        return True
 
     def install_update(self):
         """Installe la mise à jour trouvée, puis ferme l'app (l'installeur la relance).
 
         Sur macOS (app non signée), la mise à jour est téléchargée dans le navigateur.
         """
+        _update_log(
+            f"Clic sur « Mettre à jour » : version={self._update.get('version')}, "
+            f"disponible={self._update.get('available')}, plateforme={sys.platform}, "
+            f"Windows={updater.can_self_update()}, macOS={updater.can_update_macos()}"
+        )
         if not self._update.get("available"):
+            _update_log("Refus : aucune mise à jour enregistrée (le contrôle n'a pas trouvé de version).")
             return {"ok": False, "error": "Aucune mise à jour disponible."}
         try:
             if updater.can_self_update():
+                _update_log("Mode : installeur Windows silencieux.")
                 updater.install(self._update)          # Windows : installeur silencieux
             elif updater.can_update_macos():
+                _update_log("Mode : remplacement du .app macOS.")
                 updater.install_macos(self._update)    # macOS : remplacement du .app
             else:
+                _update_log(f"Mode : téléchargement manuel ({self._update.get('exe_url')}).")
                 webbrowser.open(self._update["exe_url"])  # autre cas : téléchargement manuel
                 return {"ok": True, "manual": True}
         except Exception as exc:
             log_error("Installation de mise à jour :\n" + traceback.format_exc(), file_name="update.log")
+            _update_log(f"ÉCHEC de l'installation : {exc}")
             return {"ok": False, "error": str(exc)}
+        _update_log("Installation préparée : fermeture de PicTone pour lancer le remplacement.")
         if self._window is not None:
             self._window.destroy()
         # destroy() ne termine pas toujours le processus (macOS) : le script de remplacement

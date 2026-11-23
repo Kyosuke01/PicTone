@@ -156,6 +156,16 @@ def _batch_encoding():
     return "mbcs" if sys.platform == "win32" else "utf-8"
 
 
+def update_log_path():
+    """update.log, au même endroit que le journal de PicTone (les scripts y écrivent aussi)."""
+    if sys.platform == "win32":
+        base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+        return os.path.join(base, "PicTone", "logs", "update.log")
+    if sys.platform == "darwin":
+        return os.path.join(os.path.expanduser("~"), "Library", "Logs", "PicTone", "update.log")
+    return os.path.join(tempfile.gettempdir(), "PicTone", "update.log")
+
+
 # ---------------------------------------------------------------------------
 # Windows : installeur silencieux
 # ---------------------------------------------------------------------------
@@ -177,25 +187,35 @@ def install(update):
     _download_verified(update, setup)
 
     pid = os.getpid()
+    log_file = update_log_path()
+    installer_log = os.path.join(os.path.dirname(log_file), "installer.txt")
+    _log(f"Installation Windows : exe={current_exe}, dossier={app_dir}, pid={pid}")
+    _log(f"Installeur téléchargé : {setup} ; journal de l'installeur : {installer_log}")
     lines = [
         "@echo off",
+        f'set "LOG={log_file}"',
+        f'echo [%DATE% %TIME%] script : attente de la fermeture de PicTone (pid {pid})>>"%LOG%"',
         ":wait",
         f'tasklist /FI "PID eq {pid}" | find "{pid}" >nul',
         "if errorlevel 1 goto run",
         "ping 127.0.0.1 -n 2 >nul",
         "goto wait",
         ":run",
-        f'"{setup}" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR="{app_dir}"',
+        f'echo [%DATE% %TIME%] script : PicTone fermé, lancement de l\'installeur>>"%LOG%"',
+        f'"{setup}" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR="{app_dir}" /LOG="{installer_log}"',
+        f'echo [%DATE% %TIME%] script : installeur terminé, code retour %ERRORLEVEL%>>"%LOG%"',
         f'start "" "{current_exe}"',
+        f'echo [%DATE% %TIME%] script : PicTone relancé>>"%LOG%"',
         'del /f /q "%~f0" >nul 2>&1',
     ]
     script = os.path.join(work_dir, "apply_update.bat")
     with open(script, "w", encoding=_batch_encoding(), newline="\r\n") as f:
         f.write("\n".join(lines) + "\n")
+    _log(f"Script de remplacement : {script}")
 
     flags = DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW if sys.platform == "win32" else 0
     subprocess.Popen(["cmd", "/c", script], creationflags=flags, close_fds=True)
-    _log("Installeur lancé : PicTone va redémarrer.")
+    _log("Installeur lancé : PicTone va se fermer puis redémarrer.")
 
 
 # ---------------------------------------------------------------------------
@@ -242,8 +262,10 @@ def install_macos(update):
     staged = stage_macos_app(update, work)
     backup = os.path.join(work, "previous.app")
     script = os.path.join(work, "apply_update.sh")
-    log_file = os.path.join(os.path.expanduser("~"), "Library", "Logs", "PicTone", "update.log")
+    log_file = update_log_path()
     pid = os.getpid()
+    _log(f"Installation macOS : app={app}, pid={pid}, nouvelle version préparée={staged}")
+    _log(f"Script de remplacement : {script} ; journal : {log_file}")
     with open(script, "w", encoding="utf-8") as f:
         f.write(
             "#!/bin/sh\n"
@@ -251,7 +273,7 @@ def install_macos(update):
             # chaque étape (update.log), pour qu'un échec soit visible.
             "trap '' HUP INT TERM\n"
             f'LOG="{log_file}"\n'
-            'log() { mkdir -p "$(dirname "$LOG")" 2>/dev/null; echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] installation : $1" >> "$LOG"; }\n'
+            'log() { mkdir -p "$(dirname "$LOG")" 2>/dev/null; echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] script : $1" >> "$LOG"; }\n'
             f'log "démarrage, attente de la fermeture de PicTone (pid {pid})"\n'
             "waited=0\n"
             f"while kill -0 {pid} 2>/dev/null; do\n"
@@ -259,21 +281,20 @@ def install_macos(update):
             "  waited=$((waited + 1))\n"
             '  if [ "$waited" -ge 120 ]; then log "PicTone est toujours ouvert après 120 s : abandon"; exit 1; fi\n'
             "done\n"
-            'log "PicTone fermé, remplacement de l\'application"\n'
-            f'if mv "{app}" "{backup}"; then\n'
+            'log "PicTone fermé après $waited s, remplacement de l\'application"\n'
+            f'if mv "{app}" "{backup}" 2>>"$LOG"; then\n'
             '  log "ancienne version mise de côté"\n'
-            f'  if ditto "{staged}" "{app}"; then\n'
+            f'  if ditto "{staged}" "{app}" 2>>"$LOG"; then\n'
             '    log "nouvelle version installée"\n'
             "  else\n"
             '    log "échec de la copie : restauration de l\'ancienne version"\n'
             f'    rm -rf "{app}"\n'
-            f'    mv "{backup}" "{app}"\n'
+            f'    mv "{backup}" "{app}" 2>>"$LOG"\n'
             "  fi\n"
             "else\n"
             '  log "échec : ancienne version impossible à déplacer"\n'
             "fi\n"
-            f'open "{app}"\n'
-            'log "relance de PicTone demandée"\n'
+            f'if open "{app}" 2>>"$LOG"; then log "relance de PicTone demandée"; else log "échec de la relance"; fi\n'
             f'rm -rf "{work}"\n'
         )
     os.chmod(script, 0o700)
