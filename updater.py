@@ -186,6 +186,9 @@ def install(update):
     _download_verified(update, setup)
 
     pid = os.getpid()
+    # Exécutable PyInstaller en mode fichier unique : le processus réel (pid) est un enfant du
+    # bootloader (ppid), qui nettoie son dossier temporaire _MEI à sa sortie. On attend les deux.
+    ppid = os.getppid() if getattr(sys, "_MEIPASS", None) else None
     log_file = update_log_path()
     installer_log = os.path.join(os.path.dirname(log_file), "installer.txt")
     _log(f"Installation Windows : exe={current_exe}, dossier={app_dir}, pid={pid}")
@@ -198,15 +201,26 @@ def install(update):
         ":wait",
         # Sans fenêtre : tasklist/find s'exécutent dans la console cachée du script (aucun terminal visible).
         f'tasklist /FI "PID eq {pid}" /NH 2>nul | find "{pid}" >nul',
-        "if errorlevel 1 goto run",
+        "if errorlevel 1 goto " + ("waitparent" if ppid else "run"),
         "set /a TRIES+=1",
         "if %TRIES% GEQ 240 goto timeout",
         "ping 127.0.0.1 -n 2 -w 500 >nul",
         "goto wait",
+        ":waitparent",
+    ] + ([
+        f'tasklist /FI "PID eq {ppid}" /NH 2>nul | find "{ppid}" >nul',
+        "if errorlevel 1 goto run",
+        "set /a TRIES+=1",
+        "if %TRIES% GEQ 240 goto timeout",
+        "ping 127.0.0.1 -n 2 -w 500 >nul",
+        "goto waitparent",
+    ] if ppid else []) + [
         ":timeout",
         f'echo [%DATE% %TIME%] script : PicTone toujours ouvert apres 120 s, abandon>>"%LOG%"',
         "goto cleanup",
         ":run",
+        # Délai de sécurité : Windows libère les fichiers du bootloader après la sortie.
+        "ping 127.0.0.1 -n 3 -w 1000 >nul",
         f'echo [%DATE% %TIME%] script : PicTone fermé, lancement de l\'installeur>>"%LOG%"',
         f'"{setup}" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR="{app_dir}" /LOG="{installer_log}"',
         f'echo [%DATE% %TIME%] script : installeur terminé, code retour %ERRORLEVEL%>>"%LOG%"',

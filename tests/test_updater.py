@@ -396,9 +396,10 @@ def test_install_downloads_verifies_and_launches_silent_installer(monkeypatch, i
     assert f"PID eq {os.getpid()}" in text
     assert text.index(":wait") < text.index(":run") < text.index("/VERYSILENT")
     assert f'tasklist /FI "PID eq {os.getpid()}" /NH 2>nul | find "{os.getpid()}" >nul' in text
-    assert "if errorlevel 1 goto run" in text
+    assert "if errorlevel 1 goto run" in text or "if errorlevel 1 goto waitparent" in text
     assert "ping 127.0.0.1 -n 2 -w 500 >nul" in text
     assert "if %TRIES% GEQ 240 goto timeout" in text           # abandon après 120 s, pas de boucle infinie
+    assert text.index(":waitparent") < text.index(":run")      # le bootloader parent doit aussi être sorti
     assert "goto wait" in text
     assert kwargs["close_fds"] is True
 
