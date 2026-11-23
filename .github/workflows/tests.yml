@@ -6,11 +6,34 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      mac_runner: ${{ steps.runner.outputs.value }}
+    steps:
+      - name: Choisir le runner macOS (Mac personnel si en ligne, sinon GitHub)
+        id: runner
+        env:
+          GH_TOKEN: ${{ secrets.RUNNER_STATUS_TOKEN || github.token }}
+          EVENT: ${{ github.event_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          # Le Mac personnel n'est jamais utilisé pour les pull requests (dépôt public).
+          if [ "$EVENT" != "pull_request" ] && \
+             gh api "repos/$REPO/actions/runners" --jq '.runners[] | select(.status=="online" and any(.labels[]; .name=="macOS")) | .name' 2>/dev/null | grep -q .; then
+            echo 'value=["self-hosted","macOS"]' >> "$GITHUB_OUTPUT"
+            echo "Mac personnel en ligne : utilisé."
+          else
+            echo 'value="macos-latest"' >> "$GITHUB_OUTPUT"
+            echo "Mac personnel indisponible : runner GitHub utilisé."
+          fi
+
   windows:
     name: Tests Windows
     runs-on: windows-latest
@@ -30,7 +53,8 @@ jobs:
 
   macos:
     name: Tests macOS
-    runs-on: macos-latest
+    needs: prepare
+    runs-on: ${{ fromJSON(needs.prepare.outputs.mac_runner) }}
     steps:
       - uses: actions/checkout@v4
 
