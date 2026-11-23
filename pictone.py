@@ -356,6 +356,11 @@ def build_menus(api):
     return menus
 
 
+def _menu_label(title):
+    """Titre d'un élément de menu sans son suffixe de raccourci : « Annuler  (⌘Z) » -> « Annuler »."""
+    return str(title).split("  (")[0].strip()
+
+
 def command_labels(spec):
     """{libellé natif : commande} pour les éléments de menu qui pilotent l'interface."""
     labels = {}
@@ -365,7 +370,9 @@ def command_labels(spec):
             if "items" in entry:
                 walk(entry["items"])
             elif entry.get("command"):
-                labels[entry["title"].split("  (")[0].strip()] = entry["command"]
+                label = _menu_label(entry["title"])
+                assert label not in labels, f"libellé de menu en double : {label}"
+                labels[label] = entry["command"]
 
     walk(spec)
     return labels
@@ -402,7 +409,7 @@ def _apply_menu_states_mac(labels, states):
                 submenu.setAutoenablesItems_(False)
             for j in range(submenu.numberOfItems()):
                 item = submenu.itemAtIndex_(j)
-                command = labels.get(str(item.title()))
+                command = labels.get(_menu_label(item.title()))
                 if command in states:
                     item.setEnabled_(bool(states[command]))
                     matched += 1
@@ -427,7 +434,7 @@ def _apply_menu_states_windows(window, labels, states):
                     continue
                 for top in control.Items:
                     for sub in top.DropDownItems:
-                        command = labels.get(str(sub.Text))
+                        command = labels.get(_menu_label(sub.Text))
                         if command in states:
                             sub.Enabled = bool(states[command])
                             matched += 1
@@ -505,7 +512,9 @@ def main():
     )
 
     # http_server=True : évite les restrictions file:// de WebView2 (et WebKit).
-    start_kwargs = {"http_server": True, "private_mode": False}
+    # private_mode=True : port local aléatoire et aucun cache persistant. Avec le mode persistant (port fixe,
+    # cache WKWebView conservé), le premier lancement après une mise à jour pouvait servir l'ancien app.js.
+    start_kwargs = {"http_server": True, "private_mode": True}
     menu_spec = build_menus(api)
     api._menu_labels = command_labels(menu_spec)
     start_kwargs["menu"] = to_pywebview_menus(menu_spec)

@@ -501,7 +501,7 @@ def test_main_creates_window_and_starts_app(monkeypatch, fake_webview, is_window
     assert kwargs["js_api"]._window is fake_webview.window
     start = fake_webview.started[0]
     assert start["http_server"] is True
-    assert start["private_mode"] is False
+    assert start["private_mode"] is True  # pas de cache persistant entre deux versions
     if is_windows:
         assert start["icon"] == pictone.resource_path("pictone.ico")
     else:
@@ -615,3 +615,127 @@ def test_set_command_states_forwards_booleans_to_menus(monkeypatch):
 def test_set_command_states_rejects_non_dict(monkeypatch):
     monkeypatch.setattr(pictone, "apply_menu_states", lambda *a: pytest.fail("ne doit pas être appelé"))
     assert _menu_api(_CommandWindow()).set_command_states(["undo"]) is False
+
+
+def test_menu_label_strips_shortcut_suffix():
+    assert pictone._menu_label("Annuler  (⌘Z)") == "Annuler"
+    assert pictone._menu_label("Réinitialiser") == "Réinitialiser"
+
+
+@pytest.mark.parametrize("is_mac", [True, False])
+def test_every_command_menu_item_is_found_from_its_native_title(monkeypatch, is_mac):
+    """Régression : le titre natif contient le raccourci ; chaque élément doit retrouver sa commande."""
+    monkeypatch.setattr(pictone, "IS_MAC", is_mac)
+    monkeypatch.setattr(pictone, "IS_WINDOWS", not is_mac)
+    spec = pictone.build_menus(_menu_api(_CommandWindow()))
+    labels = pictone.command_labels(spec)
+    found = {}
+    for menu in spec:
+        for entry in menu["items"]:
+            if entry.get("command"):
+                found[entry["command"]] = labels.get(pictone._menu_label(entry["title"]))
+    assert found and all(cmd == got for cmd, got in found.items())
+    assert {"open", "save", "undo", "redo", "zoomIn", "zoomOut", "zoomReset"} <= set(found)
+
+
+# ---------------------------------------------------------------------------
+# Application des états aux menus natifs (avec de faux objets AppKit / .NET)
+# ---------------------------------------------------------------------------
+
+NATIVE_TITLES = {
+    "Ouvrir une image…  (⌘O)": "open",
+    "Enregistrer l'image…  (⌘S)": "save",
+    "Annuler  (⌘Z)": "undo",
+    "Réinitialiser": "reset",
+}
+STATES = {"open": True, "save": False, "undo": False, "reset": False}
+
+
+def test_apply_menu_states_mac_matches_titles_that_include_shortcuts(monkeypatch):
+    class Item:
+        def __init__(self, title):
+            self._title, self.enabled, self._sub = title, True, None
+
+        def title(self):
+            return self._title
+
+        def submenu(self):
+            return self._sub
+
+    class Menu:
+        def __init__(self, items):
+            self.items, self.auto = items, True
+
+        def numberOfItems(self):
+            return len(self.items)
+
+        def itemAtIndex_(self, i):
+            return self.items[i]
+
+        def setAutoenablesItems_(self, value):
+            self.auto = value
+
+    for item in (items := [Item(t) for t in NATIVE_TITLES]):
+        item.setEnabled_ = lambda value, item=item: setattr(item, "enabled", value)
+    file_menu = Menu(items)
+    top = Item("Fichier")
+    top._sub = file_menu
+    main_menu = Menu([top])
+
+    appkit = types.ModuleType("AppKit")
+    appkit.NSApplication = types.SimpleNamespace(
+        sharedApplication=lambda: types.SimpleNamespace(mainMenu=lambda: main_menu))
+    helper = types.ModuleType("PyObjCTools.AppHelper")
+    helper.callAfter = lambda fn: fn()
+    package = types.ModuleType("PyObjCTools")
+    package.AppHelper = helper
+    monkeypatch.setitem(sys.modules, "AppKit", appkit)
+    monkeypatch.setitem(sys.modules, "PyObjCTools", package)
+    monkeypatch.setitem(sys.modules, "PyObjCTools.AppHelper", helper)
+
+    pictone._apply_menu_states_mac(NATIVE_TITLES_LABELS(), STATES)
+
+    state_by_title = {item._title: item.enabled for item in items}
+    assert state_by_title == {
+        "Ouvrir une image…  (⌘O)": True,       # grisage appliqué même avec le suffixe de raccourci
+        "Enregistrer l'image…  (⌘S)": False,
+        "Annuler  (⌘Z)": False,
+        "Réinitialiser": False,
+    }
+    assert file_menu.auto is False               # AppKit ne doit pas réactiver les éléments
+
+
+def NATIVE_TITLES_LABELS():
+    return {pictone._menu_label(title): command for title, command in NATIVE_TITLES.items()}
+
+
+def test_apply_menu_states_windows_matches_titles_that_include_shortcuts(monkeypatch):
+    class Sub:
+        def __init__(self, text):
+            self.Text, self.Enabled = text, True
+
+    class Top:
+        def __init__(self, subs):
+            self.DropDownItems = subs
+
+    class Strip:
+        def __init__(self, tops):
+            self.Items = tops
+
+        def GetType(self):
+            return types.SimpleNamespace(Name="MenuStrip")
+
+    subs = [Sub(t) for t in NATIVE_TITLES]
+    form = types.SimpleNamespace(Controls=[Strip([Top(subs)])], Invoke=lambda action: action())
+    system = types.ModuleType("System")
+    system.Action = lambda fn: fn
+    monkeypatch.setitem(sys.modules, "System", system)
+
+    pictone._apply_menu_states_windows(types.SimpleNamespace(native=form), NATIVE_TITLES_LABELS(), STATES)
+
+    assert {sub.Text: sub.Enabled for sub in subs} == {
+        "Ouvrir une image…  (⌘O)": True,
+        "Enregistrer l'image…  (⌘S)": False,
+        "Annuler  (⌘Z)": False,
+        "Réinitialiser": False,
+    }
