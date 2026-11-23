@@ -155,6 +155,7 @@ class PicToneAPI:
         return {
             "available": bool(self._update.get("available")),
             "version": self._update.get("version", ""),
+            "up_to_date": bool(self._update.get("up_to_date")),
         }
 
     def install_update(self):

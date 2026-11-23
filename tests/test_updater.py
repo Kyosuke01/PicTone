@@ -120,19 +120,19 @@ def test_check_nothing_on_macos(monkeypatch):
     assert updater.check("3.2.0") == {"available": False}
 
 
-def test_check_nothing_for_same_version(windows_frozen, monkeypatch):
+def test_check_reports_up_to_date_for_same_version(windows_frozen, monkeypatch):
     monkeypatch.setattr(updater, "_open", bytes_source({LATEST: release_json(tag="v3.2.0")}))
-    assert updater.check("3.2.0") == {"available": False}
+    assert updater.check("3.2.0") == {"available": False, "up_to_date": True, "version": "3.2.0"}
 
 
-def test_check_nothing_for_older_release(windows_frozen, monkeypatch):
+def test_check_reports_up_to_date_for_older_release(windows_frozen, monkeypatch):
     monkeypatch.setattr(updater, "_open", bytes_source({LATEST: release_json(tag="v3.1.9")}))
-    assert updater.check("3.2.0") == {"available": False}
+    assert updater.check("3.2.0") == {"available": False, "up_to_date": True, "version": "3.1.9"}
 
 
 def test_check_compares_numbers_not_strings(windows_frozen, monkeypatch):
     monkeypatch.setattr(updater, "_open", bytes_source({LATEST: release_json(tag="v3.9.0")}))
-    assert updater.check("3.10.0") == {"available": False}
+    assert updater.check("3.10.0")["up_to_date"] is True
 
 
 def test_check_accepts_tag_without_v_prefix(windows_frozen, monkeypatch):

@@ -1237,25 +1237,41 @@ body.eraser-mode .draw-canvas { cursor: none; }
 }
 
 /* =====================================================================
-   Bannière de mise à jour
+   Statut de mise à jour (haut droite)
    ===================================================================== */
-.update-banner {
+.update-status {
     position: fixed;
-    right: 16px;
-    bottom: 16px;
+    top: 12px;
+    right: 12px;
     z-index: 1000;
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    gap: 16px;
-    padding: 12px 16px;
-    background-color: var(--bg-panel);
-    border: 1px solid var(--border-hover);
-    border-radius: 6px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
-    color: var(--text-main);
+    gap: 6px;
+    padding: 6px 14px;
+    border: 1px solid transparent;
+    border-radius: 999px;
     font-family: var(--font-sans);
-    font-size: 13px;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1;
+    cursor: pointer;
+    transition: var(--transition-base);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
 }
-.update-banner[hidden] { display: none; }
-.update-actions { display: flex; gap: 8px; }
-.update-actions .btn { width: auto; margin-top: 0; }
+.update-status[hidden] { display: none; }
+.update-status.is-available {
+    background-color: #f5a623;
+    border-color: #f5a623;
+    color: #1a1a1a;
+}
+.update-status.is-available:hover:not(:disabled) {
+    background-color: #ffb84d;
+    border-color: #ffb84d;
+}
+.update-status.is-ok {
+    background-color: #2ea043;
+    border-color: #2ea043;
+    color: #ffffff;
+    cursor: default;
+}
+.update-status:disabled { opacity: 0.85; cursor: wait; }
