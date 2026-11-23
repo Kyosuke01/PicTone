@@ -19,10 +19,15 @@ ICNS_FILE = ROOT / "pictone.icns"
 
 
 def build_name(version, platform=None):
-    """Nom du livrable : PicTone_vX.X.X_OS (OS = Windows ou macOS)."""
+    """Nom du build PyInstaller.
+
+    Windows : PicTone_vX.X.X_Windows (nom du .exe livré).
+    macOS   : PicTone (nom du .app : c'est lui qui apparaît dans la barre de menus).
+    """
     platform = sys.platform if platform is None else platform
-    os_name = "Windows" if platform == "win32" else "macOS"
-    return f"{APP_NAME}_v{version}_{os_name}"
+    if platform == "darwin":
+        return APP_NAME
+    return f"{APP_NAME}_v{version}_Windows"
 
 
 def version_info_text(version):

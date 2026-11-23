@@ -53,13 +53,13 @@ def _log_candidates():
     yield os.path.join(tempfile.gettempdir(), APP_NAME)
 
 
-def log_error(msg):
-    """Ajoute msg à crash_log.txt. Renvoie le chemin du fichier, ou None si impossible."""
+def log_error(msg, file_name="crash_log.txt"):
+    """Ajoute msg à file_name (crash_log.txt par défaut). Renvoie le chemin, ou None si impossible."""
     line = f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] v{CURRENT_VERSION}\n{msg}\n"
     for directory in _log_candidates():
         try:
             os.makedirs(directory, exist_ok=True)
-            path = os.path.join(directory, "crash_log.txt")
+            path = os.path.join(directory, file_name)
             with open(path, "a", encoding="utf-8") as f:
                 f.write(line)
             return path
@@ -138,6 +138,14 @@ def is_webview2_installed():
 # API exposée au JavaScript (window.pywebview.api.*)
 # ---------------------------------------------------------------------------
 
+def _update_log(message):
+    """Journal des mises à jour : update.log dans le même dossier que crash_log.txt."""
+    log_error(message, file_name="update.log")
+
+
+updater.LOGGER = _update_log
+
+
 class PicToneAPI:
     def __init__(self):
         self.window = None
@@ -166,16 +174,16 @@ class PicToneAPI:
         """
         if not self._update.get("available"):
             return {"ok": False, "error": "Aucune mise à jour disponible."}
-        if not updater.can_self_update():
-            try:
-                webbrowser.open(self._update["exe_url"])
-            except Exception as exc:
-                return {"ok": False, "error": str(exc)}
-            return {"ok": True, "manual": True}
         try:
-            updater.install(self._update)
+            if updater.can_self_update():
+                updater.install(self._update)          # Windows : installeur silencieux
+            elif updater.can_update_macos():
+                updater.install_macos(self._update)    # macOS : remplacement du .app
+            else:
+                webbrowser.open(self._update["exe_url"])  # autre cas : téléchargement manuel
+                return {"ok": True, "manual": True}
         except Exception as exc:
-            log_error("Installation de mise à jour :\n" + traceback.format_exc())
+            log_error("Installation de mise à jour :\n" + traceback.format_exc(), file_name="update.log")
             return {"ok": False, "error": str(exc)}
         if self.window is not None:
             self.window.destroy()

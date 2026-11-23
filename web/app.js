@@ -2516,21 +2516,15 @@ btnReset.addEventListener('click', async () => {
 
 async function initUpdater() {
     const button = document.getElementById('update-status');
+    const label = button && button.querySelector('.update-label');
     const api = window.pywebview && window.pywebview.api;
-    if (!button || !api || !api.check_update) return;
+    if (!button || !label || !api || !api.check_update) return;
 
-    const showAvailable = (version) => {
-        button.className = 'update-status is-available';
-        button.disabled = false;
-        button.textContent = `Mettre à jour vers ${version}`;
-        button.title = `La version ${version} est disponible`;
-        button.hidden = false;
-    };
-    const showUpToDate = (version) => {
-        button.className = 'update-status is-ok';
-        button.disabled = true;
-        button.textContent = 'À jour';
-        button.title = `PicTone ${version} est à jour`;
+    const setState = (state, text, title) => {
+        button.className = `update-status is-${state}`;
+        button.disabled = state === 'ok' || state === 'busy';
+        label.textContent = text;
+        button.title = title;
         button.hidden = false;
     };
 
@@ -2540,29 +2534,27 @@ async function initUpdater() {
     } catch (e) {
         return; // hors ligne ou erreur : rien à afficher
     }
-    if (info && info.available) showAvailable(info.version);
-    else if (info && info.up_to_date) showUpToDate(info.version);
-    else return; // pas de mise à jour applicable (ex. macOS, mode développement)
+    if (info && info.available) {
+        setState('available', 'Mettre à jour', `Version ${info.version} disponible : cliquer pour mettre à jour`);
+    } else if (info && info.up_to_date) {
+        setState('ok', 'À jour', `PicTone ${info.version} est à jour`);
+    } else {
+        return; // pas de mise à jour applicable (mode développement)
+    }
 
     button.addEventListener('click', async () => {
         if (!button.classList.contains('is-available')) return;
-        button.disabled = true;
-        button.textContent = 'Téléchargement…';
+        setState('busy', 'Téléchargement…', 'Téléchargement de la mise à jour');
         try {
             const result = await api.install_update();
             if (!result.ok) throw new Error(result.error);
             if (result.manual) {
-                // macOS : le .dmg s'ouvre dans le navigateur, l'app reste ouverte
-                button.textContent = 'Téléchargement lancé';
-                button.disabled = false;
+                setState('available', 'Mettre à jour', 'Téléchargement ouvert dans le navigateur');
                 return;
             }
-            button.textContent = 'Redémarrage…';
+            setState('busy', 'Redémarrage…', 'PicTone va redémarrer');
         } catch (e) {
-            button.className = 'update-status is-available';
-            button.disabled = false;
-            button.textContent = 'Réessayer la mise à jour';
-            button.title = `Échec : ${e.message}`;
+            setState('available', 'Réessayer', `Échec : ${e.message}`);
         }
     });
 }

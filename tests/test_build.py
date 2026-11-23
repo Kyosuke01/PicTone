@@ -254,11 +254,11 @@ def test_main_runs_pyinstaller_with_check_and_cleans_up(build_sandbox, monkeypat
     build_exe.main()
     pyinstaller_calls = [r for r in build_sandbox.runs if "PyInstaller" in r]
     assert len(pyinstaller_calls) == 1
-    assert pyinstaller_calls[0][pyinstaller_calls[0].index("--name") + 1] == "PicTone_v5.1.0_macOS"
+    assert pyinstaller_calls[0][pyinstaller_calls[0].index("--name") + 1] == "PicTone"
     assert any(k.get("check") is True for k in build_sandbox.kwargs_seen)
     assert (build_sandbox.root / "pictone.icns").read_bytes()[:4] == b"icns"
     assert not (build_sandbox.root / "build").exists()
-    assert not (build_sandbox.root / "PicTone_v5.1.0_macOS.spec").exists()
+    assert not (build_sandbox.root / "PicTone.spec").exists()
     assert not (build_sandbox.root / "file_version_info.txt").exists()
 
 

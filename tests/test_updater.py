@@ -428,3 +428,75 @@ def test_install_batch_deletes_itself_at_the_end(monkeypatch, installed_app):
     updater.install(UPDATE)
     text = open(installed_app.launched[0][0][2], encoding=updater._batch_encoding()).read()
     assert 'del /f /q "%~f0"' in text
+
+
+# ---------------------------------------------------------------------------
+# macOS : remplacement du .app
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def mac_app(monkeypatch, tmp_path):
+    """Simule PicTone.app figée : bundle dans tmp_path, Popen enregistré, téléchargement factice."""
+    app = tmp_path / "Applications" / "PicTone.app"
+    (app / "Contents" / "MacOS").mkdir(parents=True)
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(app / "Contents" / "MacOS" / "PicTone"))
+    launched = []
+    monkeypatch.setattr(updater.subprocess, "Popen", lambda args, **kwargs: launched.append((args, kwargs)))
+    work = tmp_path / "work"
+    work.mkdir()
+    monkeypatch.setattr(updater.tempfile, "mkdtemp", lambda prefix="": str(work))
+    staged_source = tmp_path / "staged" / "PicTone.app"
+    staged_source.mkdir(parents=True)
+    monkeypatch.setattr(updater, "stage_macos_app", lambda update, work_dir: str(staged_source))
+    return types.SimpleNamespace(app=app, work=work, launched=launched, staged=staged_source)
+
+
+MAC_UPDATE = {"available": True, "version": "3.4.0", "exe_name": MAC_DMG,
+              "exe_url": BASE + MAC_DMG, "sums_url": SUMS_URL}
+
+
+def test_app_bundle_path_finds_the_bundle(mac_app):
+    assert updater.app_bundle_path() == str(mac_app.app)
+
+
+def test_can_update_macos_only_in_frozen_bundle(monkeypatch, mac_app):
+    assert updater.can_update_macos() is True
+    monkeypatch.setattr(sys, "frozen", False, raising=False)
+    assert updater.can_update_macos() is False
+
+
+def test_install_macos_refused_outside_a_bundle(monkeypatch, tmp_path):
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "PicTone"))
+    with pytest.raises(RuntimeError, match="application Mac"):
+        updater.install_macos(MAC_UPDATE)
+
+
+def test_install_macos_refused_without_write_access(monkeypatch, mac_app):
+    monkeypatch.setattr(updater.os, "access", lambda path, mode: False)
+    with pytest.raises(RuntimeError, match="Place-le dans Applications"):
+        updater.install_macos(MAC_UPDATE)
+    assert mac_app.launched == []
+
+
+def test_install_macos_launches_replacement_script(mac_app):
+    updater.install_macos(MAC_UPDATE)
+    args, kwargs = mac_app.launched[0]
+    assert args[0] == "/bin/sh"
+    script = open(args[1], encoding="utf-8").read()
+    assert f"while kill -0 {os.getpid()}" in script           # attend la fermeture de l'app
+    assert f'mv "{mac_app.app}"' in script                     # met l'ancienne version de côté
+    assert f'open "{mac_app.app}"' in script                   # relance l'app
+    assert f'rm -rf "{mac_app.work}"' in script                # nettoie les fichiers temporaires
+    assert kwargs["start_new_session"] is True
+
+
+def test_install_macos_restores_previous_app_when_copy_fails(mac_app):
+    updater.install_macos(MAC_UPDATE)
+    script = open(mac_app.launched[0][0][1], encoding="utf-8").read()
+    # En cas d'échec de la copie, l'ancienne version est remise en place
+    assert f'mv "{mac_app.work / "previous.app"}" "{mac_app.app}"' in script
+    assert f'ditto "{mac_app.staged}" "{mac_app.app}"' in script  # copie de la nouvelle version

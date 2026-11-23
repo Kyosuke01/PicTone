@@ -1237,41 +1237,56 @@ body.eraser-mode .draw-canvas { cursor: none; }
 }
 
 /* =====================================================================
-   Statut de mise à jour (haut gauche)
+   Statut de mise à jour (haut gauche) : icône seule, libellé au survol
    ===================================================================== */
 .update-status {
     position: fixed;
-    top: 16px;
-    left: 16px;
+    top: 14px;
+    left: 14px;
     z-index: 1000;
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
+    height: 30px;
+    padding: 0 4px;
     border: 1px solid transparent;
-    border-radius: 6px;
+    border-radius: 15px;
+    background-color: transparent;
     font-family: var(--font-sans);
     font-size: 12px;
     font-weight: 600;
-    line-height: 1;
-    transition: var(--transition-base);
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+    transition: background-color 0.2s ease, border-color 0.2s ease, padding 0.25s ease;
 }
 .update-status[hidden] { display: none; }
-.update-status.is-available {
-    background-color: #f5a623;
-    border-color: #f5a623;
-    color: #1a1a1a;
-    cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='11' fill='%23f5a623' stroke='white' stroke-width='1.5'/%3E%3Cpath d='M12 6.5v7' stroke='white' stroke-width='2.4' stroke-linecap='round'/%3E%3Ccircle cx='12' cy='17.2' r='1.4' fill='white'/%3E%3C/svg%3E") 12 12, default;
+.update-icon {
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
+    background: center / contain no-repeat;
 }
-.update-status.is-available:hover:not(:disabled) {
-    background-color: #ffb84d;
-    border-color: #ffb84d;
+.update-label {
+    max-width: 0;
+    opacity: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    margin-left: 0;
+    transition: max-width 0.25s ease, opacity 0.2s ease, margin-left 0.25s ease;
 }
-.update-status.is-ok {
-    background-color: #2ea043;
-    border-color: #2ea043;
-    color: #ffffff;
-    cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='11' fill='%232ea043' stroke='white' stroke-width='1.5'/%3E%3Cpath d='M7 12.5l3.2 3.2L17 9' fill='none' stroke='white' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") 12 12, default;
+.update-status:hover,
+.update-status:focus-visible {
+    background-color: var(--bg-panel);
+    border-color: var(--border-hover);
+    padding: 0 12px 0 4px;
 }
-.update-status:disabled { opacity: 0.85; }
+.update-status:hover .update-label,
+.update-status:focus-visible .update-label {
+    max-width: 220px;
+    opacity: 1;
+    margin-left: 6px;
+}
+.update-status.is-available .update-icon { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 4v11' stroke='%23f5a623' stroke-width='3.2' stroke-linecap='round'/%3E%3Ccircle cx='12' cy='19.5' r='1.9' fill='%23f5a623'/%3E%3C/svg%3E"); }
+.update-status.is-available .update-label { color: #f5a623; }
+.update-status.is-ok .update-icon { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5' fill='none' stroke='%232ea043' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+.update-status.is-ok .update-label { color: #2ea043; }
+.update-status.is-busy .update-icon { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 4v11' stroke='%23f5a623' stroke-width='3.2' stroke-linecap='round'/%3E%3Ccircle cx='12' cy='19.5' r='1.9' fill='%23f5a623'/%3E%3C/svg%3E"); }
+.update-status.is-available { cursor: pointer; }
+.update-status:disabled { cursor: default; }

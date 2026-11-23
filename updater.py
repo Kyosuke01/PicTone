@@ -1,7 +1,9 @@
 """Mise à jour automatique de PicTone via les Releases GitHub (stdlib uniquement).
 
-Windows uniquement : l'installeur de la dernière release est téléchargé, son empreinte
-SHA256 est vérifiée, puis il est lancé en silencieux pour remplacer la version installée.
+- Windows : l'installeur de la release est téléchargé, son empreinte SHA256 est vérifiée,
+  puis lancé en silencieux. Il remplace l'app installée, et PicTone est relancé.
+- macOS : le .dmg est téléchargé et vérifié, puis monté ; l'app qu'il contient remplace
+  l'ancienne (dans le dossier où elle se trouve), et PicTone est relancé.
 """
 
 import hashlib
@@ -24,6 +26,17 @@ DETACHED_PROCESS = 0x00000008
 CREATE_NEW_PROCESS_GROUP = 0x00000200
 CREATE_NO_WINDOW = 0x08000000
 
+# Journal des vérifications (fourni par pictone.py) : LOGGER(message).
+LOGGER = None
+
+
+def _log(message):
+    if LOGGER is not None:
+        try:
+            LOGGER(message)
+        except Exception:
+            pass
+
 
 def _parse(version):
     """'v3.0.1' -> (3, 0, 1) ; None si la version est illisible."""
@@ -36,8 +49,24 @@ def _open(url):
     return urllib.request.urlopen(request, timeout=TIMEOUT)
 
 
+def _is_frozen():
+    return bool(getattr(sys, "frozen", False))
+
+
 def can_self_update():
-    return sys.platform == "win32" and bool(getattr(sys, "frozen", False))
+    """Mise à jour par installeur : Windows, application figée."""
+    return sys.platform == "win32" and _is_frozen()
+
+
+def app_bundle_path():
+    """Chemin du .app contenant l'exécutable courant (macOS), sinon None."""
+    exe = os.path.abspath(sys.executable)  # .../PicTone.app/Contents/MacOS/PicTone
+    bundle = os.path.dirname(os.path.dirname(os.path.dirname(exe)))
+    return bundle if bundle.endswith(".app") else None
+
+
+def can_update_macos():
+    return sys.platform == "darwin" and _is_frozen() and app_bundle_path() is not None
 
 
 def check(current_version):
@@ -46,21 +75,27 @@ def check(current_version):
     Vérifié sur Windows et macOS, uniquement dans l'app figée (PyInstaller).
     """
     none = {"available": False}
+    _log(f"Vérification (version installée : {current_version}, plateforme : {sys.platform}, figée : {_is_frozen()})")
     current = _parse(current_version)
-    if current is None or not getattr(sys, "frozen", False):
+    if current is None or not _is_frozen():
+        _log("Vérification ignorée : version illisible ou application non figée.")
         return none
     try:
         with _open(LATEST_URL) as response:
             release = json.load(response)
-    except (OSError, ValueError):
+    except (OSError, ValueError) as exc:
+        _log(f"Erreur réseau ou réponse invalide : {exc}")
         return none
     if not isinstance(release, dict):
+        _log("Réponse GitHub inattendue (pas un objet JSON).")
         return none
 
     latest = _parse(release.get("tag_name"))
     if latest is None:
+        _log(f"Tag de release illisible : {release.get('tag_name')!r}")
         return none
     if latest <= current:
+        _log(f"À jour (dernière release : {'.'.join(map(str, latest))}).")
         return {"available": False, "up_to_date": True, "version": ".".join(map(str, latest))}
 
     assets = {
@@ -72,10 +107,13 @@ def check(current_version):
     setup = next((name for name in assets if pattern.fullmatch(name)), None)
     sums = assets.get(SUMS_NAME)
     if not setup or not sums:
+        _log(f"Release {latest} sans fichier attendu. Fichiers : {sorted(assets)}")
         return none
     # Sécurité : on ne télécharge que depuis les releases du dépôt.
     if not (assets[setup].startswith(DOWNLOAD_PREFIX) and sums.startswith(DOWNLOAD_PREFIX)):
+        _log("URL de téléchargement hors du dépôt : refusée.")
         return none
+    _log(f"Mise à jour disponible : {'.'.join(map(str, latest))} ({setup}).")
     return {
         "available": True,
         "version": ".".join(map(str, latest)),
@@ -105,9 +143,22 @@ def _download(url, destination):
     return sha.hexdigest()
 
 
+def _download_verified(update, destination):
+    expected = _expected_hash(update["sums_url"], update["exe_name"])
+    _log(f"Téléchargement de {update['exe_name']}…")
+    if _download(update["exe_url"], destination) != expected:
+        _log("Empreinte SHA256 différente : téléchargement rejeté.")
+        raise RuntimeError("Le fichier téléchargé est corrompu (empreinte SHA256 différente).")
+    _log("Empreinte vérifiée.")
+
+
 def _batch_encoding():
     return "mbcs" if sys.platform == "win32" else "utf-8"
 
+
+# ---------------------------------------------------------------------------
+# Windows : installeur silencieux
+# ---------------------------------------------------------------------------
 
 def install(update):
     """Télécharge l'installeur, vérifie son empreinte, puis le lance en silencieux.
@@ -123,10 +174,7 @@ def install(update):
     app_dir = os.path.dirname(current_exe)
     work_dir = tempfile.mkdtemp(prefix="PicTone_update_")
     setup = os.path.join(work_dir, update["exe_name"])
-
-    expected = _expected_hash(update["sums_url"], update["exe_name"])
-    if _download(update["exe_url"], setup) != expected:
-        raise RuntimeError("Le fichier téléchargé est corrompu (empreinte SHA256 différente).")
+    _download_verified(update, setup)
 
     pid = os.getpid()
     lines = [
@@ -147,3 +195,68 @@ def install(update):
 
     flags = DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW if sys.platform == "win32" else 0
     subprocess.Popen(["cmd", "/c", script], creationflags=flags, close_fds=True)
+    _log("Installeur lancé : PicTone va redémarrer.")
+
+
+# ---------------------------------------------------------------------------
+# macOS : remplacement du .app par celui du .dmg
+# ---------------------------------------------------------------------------
+
+def stage_macos_app(update, work_dir):
+    """Télécharge et vérifie le .dmg, copie son PicTone.app dans work_dir et renvoie son chemin."""
+    dmg = os.path.join(work_dir, update["exe_name"])
+    _download_verified(update, dmg)
+
+    mount = os.path.join(work_dir, "volume")
+    os.makedirs(mount)
+    subprocess.run(
+        ["hdiutil", "attach", "-nobrowse", "-readonly", "-noverify", "-noautoopen", "-mountpoint", mount, dmg],
+        check=True, capture_output=True,
+    )
+    try:
+        source = os.path.join(mount, "PicTone.app")
+        if not os.path.isdir(source):
+            raise RuntimeError("Le .dmg ne contient pas PicTone.app.")
+        staged = os.path.join(work_dir, "PicTone.app")
+        subprocess.run(["ditto", source, staged], check=True)
+    finally:
+        subprocess.run(["hdiutil", "detach", mount, "-quiet"], check=False, capture_output=True)
+    _log("Nouvelle version copiée et prête.")
+    return staged
+
+
+def install_macos(update):
+    """Remplace l'app par la nouvelle version, puis la relance (sans passer par GitHub).
+
+    Un script détaché attend la fermeture de cette app, remplace le .app (avec retour
+    arrière en cas d'échec), relance PicTone puis supprime les fichiers temporaires.
+    """
+    if not can_update_macos():
+        raise RuntimeError("La mise à jour automatique n'est disponible que dans l'application Mac.")
+    app = app_bundle_path()
+    parent = os.path.dirname(app)
+    if not os.access(parent, os.W_OK):
+        raise RuntimeError(f"PicTone ne peut pas être remplacé dans {parent}. Place-le dans Applications.")
+
+    work = tempfile.mkdtemp(prefix="PicTone_update_")
+    staged = stage_macos_app(update, work)
+    backup = os.path.join(work, "previous.app")
+    script = os.path.join(work, "apply_update.sh")
+    with open(script, "w", encoding="utf-8") as f:
+        f.write(
+            "#!/bin/sh\n"
+            f"while kill -0 {os.getpid()} 2>/dev/null; do sleep 1; done\n"
+            f'if mv "{app}" "{backup}"; then\n'
+            f'  if ditto "{staged}" "{app}"; then\n'
+            "    :\n"
+            "  else\n"
+            f'    rm -rf "{app}"\n'
+            f'    mv "{backup}" "{app}"\n'
+            "  fi\n"
+            "fi\n"
+            f'open "{app}"\n'
+            f'rm -rf "{work}"\n'
+        )
+    os.chmod(script, 0o700)
+    subprocess.Popen(["/bin/sh", script], start_new_session=True, close_fds=True)
+    _log("Remplacement lancé : PicTone va redémarrer.")

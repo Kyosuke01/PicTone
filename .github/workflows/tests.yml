@@ -87,7 +87,7 @@ jobs:
         run: |
           VERSION="$(tr -d '[:space:]' < version.txt)"
           mkdir -p release
-          installer/make_dmg.sh "$VERSION" "build_portable/PicTone_v${VERSION}_macOS.app" "release/PicTone_v${VERSION}_macOS.dmg"
+          installer/make_dmg.sh "$VERSION" "build_portable/PicTone.app" "release/PicTone_v${VERSION}_macOS.dmg"
 
       - name: Publier le .dmg (artefact téléchargeable)
         uses: actions/upload-artifact@v4
