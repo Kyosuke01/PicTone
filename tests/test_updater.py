@@ -395,9 +395,10 @@ def test_install_downloads_verifies_and_launches_silent_installer(monkeypatch, i
     assert f'start "" "{installed_app.exe}"' in text
     assert f"PID eq {os.getpid()}" in text
     assert text.index(":wait") < text.index(":run") < text.index("/VERYSILENT")
-    assert f'tasklist /FI "PID eq {os.getpid()}" | find "{os.getpid()}" >nul' in text
+    assert f'tasklist /FI "PID eq {os.getpid()}" /NH 2>nul | find "{os.getpid()}" >nul' in text
     assert "if errorlevel 1 goto run" in text
-    assert "ping 127.0.0.1 -n 2 >nul" in text
+    assert "ping 127.0.0.1 -n 2 -w 500 >nul" in text
+    assert "if %TRIES% GEQ 240 goto timeout" in text           # abandon après 120 s, pas de boucle infinie
     assert "goto wait" in text
     assert kwargs["close_fds"] is True
 
@@ -410,7 +411,7 @@ def test_install_launches_detached_on_windows(monkeypatch, installed_app):
     monkeypatch.setattr(updater, "_batch_encoding", lambda: "utf-8")
     updater.install(UPDATE)
     _, kwargs = installed_app.launched[0]
-    assert kwargs["creationflags"] == 0x00000008 | 0x00000200 | 0x08000000
+    assert kwargs["creationflags"] == 0x00000200 | 0x08000000  # nouveau groupe + console cachée, sans fenêtre visible
 
 
 def test_install_never_overwrites_the_running_exe_directly(monkeypatch, installed_app):

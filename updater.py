@@ -22,7 +22,6 @@ TIMEOUT = 10
 SETUP_PATTERN = re.compile(r"PicTone_v\d+(?:\.\d+){0,3}_Windows\.exe")
 MAC_PATTERN = re.compile(r"PicTone_v\d+(?:\.\d+){0,3}_macOS\.dmg")
 SUMS_NAME = "SHA256SUMS.txt"
-DETACHED_PROCESS = 0x00000008
 CREATE_NEW_PROCESS_GROUP = 0x00000200
 CREATE_NO_WINDOW = 0x08000000
 
@@ -195,17 +194,25 @@ def install(update):
         "@echo off",
         f'set "LOG={log_file}"',
         f'echo [%DATE% %TIME%] script : attente de la fermeture de PicTone (pid {pid})>>"%LOG%"',
+        "set /a TRIES=0",
         ":wait",
-        f'tasklist /FI "PID eq {pid}" | find "{pid}" >nul',
+        # Sans fenêtre : tasklist/find s'exécutent dans la console cachée du script (aucun terminal visible).
+        f'tasklist /FI "PID eq {pid}" /NH 2>nul | find "{pid}" >nul',
         "if errorlevel 1 goto run",
-        "ping 127.0.0.1 -n 2 >nul",
+        "set /a TRIES+=1",
+        "if %TRIES% GEQ 240 goto timeout",
+        "ping 127.0.0.1 -n 2 -w 500 >nul",
         "goto wait",
+        ":timeout",
+        f'echo [%DATE% %TIME%] script : PicTone toujours ouvert apres 120 s, abandon>>"%LOG%"',
+        "goto cleanup",
         ":run",
         f'echo [%DATE% %TIME%] script : PicTone fermé, lancement de l\'installeur>>"%LOG%"',
         f'"{setup}" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR="{app_dir}" /LOG="{installer_log}"',
         f'echo [%DATE% %TIME%] script : installeur terminé, code retour %ERRORLEVEL%>>"%LOG%"',
         f'start "" "{current_exe}"',
         f'echo [%DATE% %TIME%] script : PicTone relancé>>"%LOG%"',
+        ":cleanup",
         'del /f /q "%~f0" >nul 2>&1',
     ]
     script = os.path.join(work_dir, "apply_update.bat")
@@ -213,7 +220,8 @@ def install(update):
         f.write("\n".join(lines) + "\n")
     _log(f"Script de remplacement : {script}")
 
-    flags = DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW if sys.platform == "win32" else 0
+    # Pas de DETACHED_PROCESS : il donnerait une fenêtre console à chaque commande du script.
+    flags = CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW if sys.platform == "win32" else 0
     subprocess.Popen(["cmd", "/c", script], creationflags=flags, close_fds=True)
     _log("Installeur lancé : PicTone va se fermer puis redémarrer.")
 
