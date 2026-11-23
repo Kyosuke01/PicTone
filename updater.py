@@ -242,21 +242,43 @@ def install_macos(update):
     staged = stage_macos_app(update, work)
     backup = os.path.join(work, "previous.app")
     script = os.path.join(work, "apply_update.sh")
+    log_file = os.path.join(os.path.expanduser("~"), "Library", "Logs", "PicTone", "update.log")
+    pid = os.getpid()
     with open(script, "w", encoding="utf-8") as f:
         f.write(
             "#!/bin/sh\n"
-            f"while kill -0 {os.getpid()} 2>/dev/null; do sleep 1; done\n"
+            # Le script survit à la fermeture de l'app : il ignore les signaux de session et journalise
+            # chaque étape (update.log), pour qu'un échec soit visible.
+            "trap '' HUP INT TERM\n"
+            f'LOG="{log_file}"\n'
+            'log() { mkdir -p "$(dirname "$LOG")" 2>/dev/null; echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] installation : $1" >> "$LOG"; }\n'
+            f'log "démarrage, attente de la fermeture de PicTone (pid {pid})"\n'
+            "waited=0\n"
+            f"while kill -0 {pid} 2>/dev/null; do\n"
+            "  sleep 1\n"
+            "  waited=$((waited + 1))\n"
+            '  if [ "$waited" -ge 120 ]; then log "PicTone est toujours ouvert après 120 s : abandon"; exit 1; fi\n'
+            "done\n"
+            'log "PicTone fermé, remplacement de l\'application"\n'
             f'if mv "{app}" "{backup}"; then\n'
+            '  log "ancienne version mise de côté"\n'
             f'  if ditto "{staged}" "{app}"; then\n'
-            "    :\n"
+            '    log "nouvelle version installée"\n'
             "  else\n"
+            '    log "échec de la copie : restauration de l\'ancienne version"\n'
             f'    rm -rf "{app}"\n'
             f'    mv "{backup}" "{app}"\n'
             "  fi\n"
+            "else\n"
+            '  log "échec : ancienne version impossible à déplacer"\n'
             "fi\n"
             f'open "{app}"\n'
+            'log "relance de PicTone demandée"\n'
             f'rm -rf "{work}"\n'
         )
     os.chmod(script, 0o700)
-    subprocess.Popen(["/bin/sh", script], start_new_session=True, close_fds=True)
+    subprocess.Popen(
+        ["/bin/sh", script], start_new_session=True, close_fds=True,
+        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
     _log("Remplacement lancé : PicTone va redémarrer.")
