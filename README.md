@@ -45,7 +45,7 @@ Chaque push sur `main` qui modifie `version.txt` déclenche le workflow GitHub A
 Chaque Release contient :
 - **Windows, installeur** : `PicTone_vX.Y.Z_Windows.exe` (assistant d'installation, raccourcis, désinstallation, mise à jour automatique) ;
 - **Windows, portable** : `PicTone_vX.Y.Z_Windows-portable.exe` (aucune installation) ;
-- **macOS** : `PicTone_vX.Y.Z_macOS.dmg`. L'application n'est pas signée par Apple : au premier lancement, faites un clic droit sur PicTone > **Ouvrir**, puis confirmez. Sur macOS, « Mettre à jour » télécharge la nouvelle version, la remplace et relance PicTone.
+- **macOS** : `PicTone_vX.Y.Z_macOS.dmg`. Application signée et notarisée par Apple : elle s'ouvre directement, sans avertissement. Les versions antérieures à 3.3.24 n'étaient pas signées : pour celles-ci, faites un clic droit sur PicTone > **Ouvrir**, puis confirmez. Sur macOS, « Mettre à jour » télécharge la nouvelle version, la remplace et relance PicTone.
 
 ## 🧪 Tests
 

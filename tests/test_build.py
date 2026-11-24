@@ -300,3 +300,24 @@ def test_main_exits_when_pyinstaller_is_missing(build_sandbox, monkeypatch):
     with pytest.raises(SystemExit) as info:
         build_exe.main()
     assert "PyInstaller est introuvable" in str(info.value.code)
+
+
+# ---------------------------------------------------------------------------
+# Signature macOS : entitlements et script de notarisation
+# ---------------------------------------------------------------------------
+
+def test_entitlements_plist_enables_python_runtime_exceptions():
+    import plistlib
+
+    data = plistlib.loads((REPO / "installer" / "entitlements.plist").read_bytes())
+    assert data["com.apple.security.cs.allow-unsigned-executable-memory"] is True
+    assert data["com.apple.security.cs.disable-library-validation"] is True
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="script bash : exécuté sur macOS uniquement")
+def test_sign_and_notarize_script_has_valid_bash_syntax():
+    result = subprocess.run(
+        ["bash", "-n", str(REPO / "installer" / "sign_and_notarize.sh")],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stderr
