@@ -29,7 +29,6 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
       exists: ${{ steps.exists.outputs.exists }}
-      mac_runner: ${{ steps.runner.outputs.value }}
     steps:
       - uses: actions/checkout@v4
 
@@ -51,23 +50,6 @@ jobs:
             echo "::notice::La release v${{ steps.version.outputs.version }} existe déjà, rien à faire."
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Choisir le runner macOS (Mac personnel si en ligne, sinon GitHub)
-        id: runner
-        env:
-          GH_TOKEN: ${{ secrets.RUNNER_STATUS_TOKEN || github.token }}
-          EVENT: ${{ github.event_name }}
-          REPO: ${{ github.repository }}
-        run: |
-          # Le Mac personnel n'est jamais utilisé pour les pull requests (dépôt public).
-          if [ "$EVENT" != "pull_request" ] && \
-             gh api "repos/$REPO/actions/runners" --jq '.runners[] | select(.status=="online" and any(.labels[]; .name=="macOS")) | .name' 2>/dev/null | grep -q .; then
-            echo 'value=["self-hosted","macOS"]' >> "$GITHUB_OUTPUT"
-            echo "Mac personnel en ligne : utilisé."
-          else
-            echo 'value="macos-latest"' >> "$GITHUB_OUTPUT"
-            echo "Mac personnel indisponible : runner GitHub utilisé."
           fi
 
   windows:
@@ -159,21 +141,14 @@ jobs:
   macos:
     needs: prepare
     if: needs.prepare.outputs.exists == 'false'
-    runs-on: ${{ fromJSON(needs.prepare.outputs.mac_runner) }}
+    # Runner GitHub (et non un Mac personnel) : ce job reçoit les secrets de signature.
+    runs-on: macos-latest
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Préparer Python 3.11 (Mac personnel)
-        if: runner.environment == 'self-hosted'
-        run: |
-          brew install python@3.11 || true
-          "$(brew --prefix python@3.11)/bin/python3.11" -m venv "$RUNNER_TEMP/venv"
-          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
-
       - uses: actions/setup-python@v5
-        if: runner.environment == 'github-hosted'
         with:
           python-version: "3.11"
           cache: pip
@@ -202,11 +177,56 @@ jobs:
       - name: Installer create-dmg
         run: brew install create-dmg
 
-      - name: Créer le .dmg
+      - name: Importer le certificat de signature (trousseau temporaire)
+        env:
+          P12_BASE64: ${{ secrets.APPLE_CERT_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+          API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
         run: |
-          VERSION="$(tr -d '[:space:]' < version.txt)"
+          set -euo pipefail
+          for var in P12_BASE64 P12_PASSWORD API_KEY_P8 API_KEY_ID API_ISSUER_ID; do
+            if [ -z "${!var}" ]; then echo "::error::Secret $var manquant : release non signée refusée."; exit 1; fi
+          done
+
+          P12="$RUNNER_TEMP/certificate.p12"
+          printf '%s' "$P12_BASE64" | base64 --decode > "$P12"
+
+          KEYCHAIN="$RUNNER_TEMP/pictone-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$P12" -k "$KEYCHAIN" -P "$P12_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+
+          IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN" | sed -n 's/.*"\(Developer ID Application:[^"]*\)".*/\1/p' | head -n 1)"
+          if [ -z "$IDENTITY" ]; then echo "::error::Aucun certificat Developer ID Application valide dans le trousseau."; exit 1; fi
+
+          KEY_PATH="$RUNNER_TEMP/AuthKey_${API_KEY_ID}.p8"
+          printf '%s\n' "$API_KEY_P8" > "$KEY_PATH"
+
+          {
+            echo "MACOS_KEYCHAIN=$KEYCHAIN"
+            echo "MACOS_SIGN_IDENTITY=$IDENTITY"
+            echo "APPLE_API_KEY_PATH=$KEY_PATH"
+          } >> "$GITHUB_ENV"
+
+      - name: Signer, notariser et créer le .dmg
+        env:
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+        run: |
           mkdir -p release
-          installer/make_dmg.sh "$VERSION" "build_portable/PicTone.app" "release/PicTone_v${VERSION}_macOS.dmg"
+          installer/sign_and_notarize.sh "$VERSION" "build_portable/PicTone.app" "release/PicTone_v${VERSION}_macOS.dmg"
+
+      - name: Supprimer le trousseau et les clés temporaires
+        if: always()
+        run: |
+          [ -n "${MACOS_KEYCHAIN:-}" ] && security delete-keychain "$MACOS_KEYCHAIN" || true
+          rm -f "${APPLE_API_KEY_PATH:-/nonexistent}" "$RUNNER_TEMP/certificate.p12"
 
       - name: Publier le .dmg (artefact)
         uses: actions/upload-artifact@v4
