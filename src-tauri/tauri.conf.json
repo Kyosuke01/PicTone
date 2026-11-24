@@ -42,7 +42,9 @@
         "languages": [
           "French"
         ],
-        "displayLanguageSelector": false
+        "displayLanguageSelector": false,
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico"
       }
     },
     "shortDescription": "Éditeur d'images local"

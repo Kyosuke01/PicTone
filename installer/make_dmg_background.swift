@@ -21,7 +21,7 @@ func render(scale: Int, to path: String) {
         .foregroundColor: NSColor(calibratedWhite: 0.45, alpha: 1),
     ]
     let size = (text as NSString).size(withAttributes: attributes)
-    (text as NSString).draw(at: NSPoint(x: (width - size.width) / 2, y: 22), withAttributes: attributes)
+    (text as NSString).draw(at: NSPoint(x: (width - size.width) / 2, y: 64), withAttributes: attributes)
     NSGraphicsContext.restoreGraphicsState()
     try! rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: path))
 }
