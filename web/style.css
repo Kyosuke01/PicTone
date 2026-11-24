@@ -805,6 +805,110 @@ input[type="color"] {
 .crop-toolbar .btn { width: auto; }
 
 
+
+/* Calques d'image (en bas à gauche de l'image) */
+.image-layers-panel {
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    width: 240px;
+    background: rgba(30, 30, 30, 0.8);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-m);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    z-index: 15;
+    overflow: hidden;
+}
+.image-layers-panel .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 10px 8px 12px;
+    background: rgba(0, 0, 0, 0.2);
+    border-bottom: 1px solid var(--border-color);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+.panel-add-btn {
+    background: none;
+    border: none;
+    color: var(--text-main);
+    font-size: 16px;
+    line-height: 1;
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    cursor: pointer;
+}
+.panel-add-btn:hover { background: var(--bg-hover); }
+.image-layers-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px;
+    max-height: 220px;
+    overflow-y: auto;
+}
+.image-layers-empty {
+    font-size: 11px;
+    color: var(--text-muted);
+    padding: 4px;
+    line-height: 1.4;
+}
+.image-layer-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 6px 6px 8px;
+    border-radius: var(--radius-s);
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid transparent;
+    cursor: pointer;
+}
+.image-layer-item.selected {
+    border-color: var(--accent-color);
+    background: var(--accent-soft);
+}
+.layer-eye,
+.layer-delete {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 12px;
+    padding: 0 2px;
+    line-height: 1;
+}
+.layer-eye:hover,
+.layer-delete:hover { color: var(--text-main); }
+.layer-delete:hover { color: var(--danger); }
+.layer-name {
+    flex: 1;
+    min-width: 0;
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.image-layer-item input[type="range"] { width: 56px; }
+.image-layer-props {
+    display: flex;
+    gap: 8px;
+    padding: 8px 10px 10px;
+    border-top: 1px solid var(--border-color);
+}
+.image-layer-props.hidden { display: none; }
+.layer-prop {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--text-muted);
+}
+.layer-prop .val-input { width: 64px; }
+
 /* Utilitaires */
 .hidden { display: none !important; }
 #file-input { display: none; }
