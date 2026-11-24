@@ -885,6 +885,14 @@ input[type="color"] {
     gap: 8px;
 }
 
+.modal-container.wide { max-width: 520px; }
+.modal-footer { flex-wrap: wrap; }
+.btn-danger {
+    background: none;
+    border: 1px solid transparent;
+    color: var(--danger);
+}
+.btn-danger:hover:not(:disabled) { background: rgba(255, 107, 107, 0.12); }
 .modal-footer .btn {
     width: auto;
     min-width: 90px;

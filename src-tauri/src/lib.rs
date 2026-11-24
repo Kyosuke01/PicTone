@@ -7,14 +7,23 @@ mod updater;
 use base64::Engine;
 use serde_json::{json, Value};
 use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, RunEvent, State, Window, WindowEvent};
 use tauri_plugin_dialog::DialogExt;
 
 use logging::{log_error, update_log, version, APP_NAME};
 
 #[derive(Default)]
 struct UpdateState(Mutex<updater::UpdateInfo>);
+
+/// Dernier fichier enregistré : « Enregistrer » le réécrit sans redemander, « Enregistrer sous » non.
+#[derive(Default)]
+struct LastSavePath(Mutex<Option<PathBuf>>);
+
+/// Vrai une fois que l'utilisateur a confirmé la fermeture (après la fenêtre de modifications non enregistrées).
+static QUIT_CONFIRMED: AtomicBool = AtomicBool::new(false);
 
 #[tauri::command]
 fn get_version() -> String {
@@ -95,9 +104,16 @@ async fn tokio_sleep(ms: u64) {
     let _ = tauri::async_runtime::spawn_blocking(move || std::thread::sleep(std::time::Duration::from_millis(ms))).await;
 }
 
-/// Ouvre « Enregistrer sous » puis écrit l'image décodée. false si annulé ou en cas d'erreur.
+/// Écrit l'image décodée. `save_as` = true : boîte « Enregistrer sous ». false : réécrit le dernier
+/// fichier (même extension) s'il existe, sinon ouvre la boîte. false de retour si annulé ou en erreur.
 #[tauri::command]
-async fn save_file(app: AppHandle, data_url: String, filename: String) -> Result<bool, ()> {
+async fn save_file(
+    app: AppHandle,
+    last: State<'_, LastSavePath>,
+    data_url: String,
+    filename: String,
+    save_as: bool,
+) -> Result<bool, ()> {
     let ext = filename.rsplit_once('.').map(|(_, e)| e.to_lowercase()).unwrap_or_else(|| "png".into());
     let ext = if ext == "jpg" { "jpeg".to_string() } else { ext };
     let Some((_, encoded)) = data_url.split_once(',') else {
@@ -112,21 +128,41 @@ async fn save_file(app: AppHandle, data_url: String, filename: String) -> Result
         }
     };
 
-    let picked = app
-        .dialog()
-        .file()
-        .set_file_name(&filename)
-        .add_filter(format!("Fichier {}", ext.to_uppercase()), &[ext.as_str()])
-        .blocking_save_file();
-    let Some(path) = picked else { return Ok(false) }; // annulé
-    let Ok(path) = path.into_path() else { return Ok(false) };
+    let reusable = if save_as { None } else { last.0.lock().unwrap().clone() };
+    let reusable = reusable.filter(|p| {
+        p.extension().and_then(|e| e.to_str()).map(|e| e.eq_ignore_ascii_case(&ext)).unwrap_or(false)
+    });
+    let path: PathBuf = match reusable {
+        Some(path) => path,
+        None => {
+            let picked = app
+                .dialog()
+                .file()
+                .set_file_name(&filename)
+                .add_filter(format!("Fichier {}", ext.to_uppercase()), &[ext.as_str()])
+                .blocking_save_file();
+            let Some(picked) = picked else { return Ok(false) }; // annulé
+            let Ok(path) = picked.into_path() else { return Ok(false) };
+            path
+        }
+    };
     match std::fs::write(&path, bytes) {
-        Ok(()) => Ok(true),
+        Ok(()) => {
+            *last.0.lock().unwrap() = Some(path);
+            Ok(true)
+        }
         Err(e) => {
             log_error(&format!("Erreur lors de l'enregistrement : {e}"));
             Ok(false)
         }
     }
+}
+
+/// Ferme PicTone sans nouvelle demande (appelée après le choix « Quitter » ou une sauvegarde réussie).
+#[tauri::command]
+fn quit_app(app: AppHandle) {
+    QUIT_CONFIRMED.store(true, Ordering::SeqCst);
+    app.exit(0);
 }
 
 /// Envoie une commande de menu à l'interface (picToneCommand, app.js).
@@ -142,6 +178,7 @@ pub fn run() {
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(UpdateState::default())
+        .manage(LastSavePath::default())
         .manage(menus::MenuState::default())
         .setup(|app| {
             let handle = app.handle();
@@ -153,14 +190,34 @@ pub fn run() {
             }
             Ok(())
         })
+        .on_window_event(|window: &Window, event| {
+            // Fermer la fenêtre (bouton rouge, ⌘W…) : l'interface demande d'abord s'il faut enregistrer.
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                if !QUIT_CONFIRMED.load(Ordering::SeqCst) {
+                    api.prevent_close();
+                    let _ = window.app_handle().emit("quit-request", ());
+                }
+            }
+        })
         .on_menu_event(|app, event| {
             // Toutes les commandes (dont « À propos ») passent par l'interface : alert() n'y marche pas.
             send_command(app, event.id().as_ref());
         })
         .invoke_handler(tauri::generate_handler![
-            get_version, log_js, check_update, set_command_states, install_update, save_file
+            get_version, log_js, check_update, set_command_states, install_update, save_file, quit_app
         ])
-        .run(tauri::generate_context!());
+        .build(tauri::generate_context!());
+    let result = result.map(|app| {
+        app.run(|app, event| {
+            // Cmd+Q / Quitter : même demande que pour la fenêtre.
+            if let RunEvent::ExitRequested { api, .. } = event {
+                if !QUIT_CONFIRMED.load(Ordering::SeqCst) {
+                    api.prevent_exit();
+                    let _ = app.emit("quit-request", ());
+                }
+            }
+        })
+    });
     if let Err(e) = result {
         let path = log_error(&format!("Erreur au démarrage : {e}"));
         eprintln!("{APP_NAME} a rencontré une erreur : {e} ({path:?})");

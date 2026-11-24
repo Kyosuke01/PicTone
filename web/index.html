@@ -392,6 +392,23 @@
             </div>
         </div>
     </div>
+    <!-- Fermeture avec modifications non enregistrées -->
+    <div id="quit-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="quit-title">
+        <div class="modal-container wide">
+            <div class="modal-header">
+                <span id="quit-title">Quitter PicTone ?</span>
+            </div>
+            <div class="modal-body">
+                <p>Votre image contient des modifications qui ne sont pas enregistrées.</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" data-quit-choice="cancel">Annuler</button>
+                <button class="btn btn-primary" data-quit-choice="save">Enregistrer</button>
+                <button class="btn btn-secondary" data-quit-choice="saveAs">Enregistrer sous</button>
+                <button class="btn btn-danger" data-quit-choice="quit">Quitter</button>
+            </div>
+        </div>
+    </div>
     <!-- Statut de mise à jour (haut droite) : « Mettre à jour » (orange) ou « À jour » (vert) -->
     <button id="update-status" class="update-status" type="button" hidden>
         <span class="update-icon" aria-hidden="true"></span>
