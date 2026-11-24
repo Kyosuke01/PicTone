@@ -300,30 +300,40 @@ pub fn can_update_windows() -> bool {
         .unwrap_or(false)
 }
 
-/// Windows : télécharge et vérifie l'installeur, puis lance (après la fermeture de l'app)
-/// une installation silencieuse suivie de la relance de PicTone.
+/// Windows : télécharge et vérifie l'installeur, puis lance une installation silencieuse
+/// dès que PicTone est fermé, suivie de la relance de l'application.
+///
+/// Un script PowerShell caché attend la fin du processus PicTone (au lieu d'une pause fixe),
+/// puis lance l'installeur en silencieux et relance PicTone. `CREATE_NO_WINDOW` seul : ajouter
+/// `DETACHED_PROCESS` ouvrait une fenêtre de terminal.
 #[cfg(windows)]
 pub fn install_windows(update: &UpdateInfo) -> Result<(), String> {
     use std::os::windows::process::CommandExt;
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-    const DETACHED_PROCESS: u32 = 0x0000_0008;
-    const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
 
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let process_name = exe
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .ok_or("Nom de l'application introuvable.")?
+        .to_string();
     let work = std::env::temp_dir().join(format!("PicTone_update_{}", std::process::id()));
     std::fs::create_dir_all(&work).map_err(|e| e.to_string())?;
     let setup = work.join(&update.exe_name);
     download_verified(update, &setup)?;
 
-    // Pause de 3 s (l'app se ferme), installation silencieuse, relance.
-    let line = format!(
-        "ping -n 4 127.0.0.1 >nul & \"{}\" /S & start \"\" \"{}\"",
-        setup.display(),
-        exe.display()
+    // Guillemets simples PowerShell : on double celles qui se trouvent dans les chemins.
+    let quote = |p: &Path| format!("'{}'", p.display().to_string().replace('\'', "''"));
+    let script = format!(
+        "while (Get-Process -Name '{process_name}' -ErrorAction SilentlyContinue) {{ Start-Sleep -Milliseconds 300 }}; \
+         Start-Process -Wait -FilePath {setup} -ArgumentList '/S'; \
+         Start-Process -FilePath {exe}",
+        setup = quote(setup.as_path()),
+        exe = quote(exe.as_path()),
     );
-    Command::new("cmd")
-        .raw_arg(format!("/C \"{line}\""))
-        .creation_flags(CREATE_NO_WINDOW | DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP)
+    Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", script.as_str()])
+        .creation_flags(CREATE_NO_WINDOW)
         .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null())
         .spawn()
         .map_err(|e| e.to_string())?;
