@@ -2,9 +2,7 @@ name: Release
 
 # Publie une Release GitHub (tag vX.Y.Z) à chaque push sur main qui modifie version.txt.
 # Assets publiés :
-#   - PicTone_vX.Y.Z_Windows.exe           installeur Windows (utilisé par la mise à jour automatique)
-#   - PicTone_vX.Y.Z_Windows-portable.exe  version portable Windows
-#   - PicTone_vX.Y.Z_macOS.dmg             application macOS
+#   - PicTone_vX.Y.Z_macOS.dmg             application macOS (signée et notarisée)
 #   - SHA256SUMS.txt
 on:
   push:
@@ -18,9 +16,6 @@ concurrency:
 
 permissions:
   contents: write
-
-env:
-  PYTHONUTF8: "1"
 
 jobs:
   prepare:
@@ -52,92 +47,6 @@ jobs:
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
-  windows:
-    needs: prepare
-    if: needs.prepare.outputs.exists == 'false'
-    runs-on: windows-latest
-    env:
-      VERSION: ${{ needs.prepare.outputs.version }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-          cache: pip
-
-      - name: Installer les dépendances Python
-        run: python -m pip install -r requirements.txt
-
-      - name: Tests unitaires
-        run: |
-          python -m pip install -r requirements-dev.txt
-          python -m pytest
-
-      - name: Compiler l'application
-        run: python build_exe.py
-
-      - name: Test de démarrage (portable, avant installeur)
-        shell: pwsh
-        run: |
-          $exe = "build_portable/PicTone_v${env:VERSION}_Windows.exe"
-          $p = Start-Process -FilePath $exe -PassThru
-          Start-Sleep -Seconds 12
-          if ($p.HasExited) {
-            $log = Join-Path $env:LOCALAPPDATA "PicTone/logs/crash_log.txt"
-            if (Test-Path $log) { Get-Content $log }
-            throw "PicTone s'est fermé au démarrage (code $($p.ExitCode))."
-          }
-          # PyInstaller --onefile lance un processus enfant : on arrête toutes les instances.
-          Get-Process -Name PicTone -ErrorAction SilentlyContinue | Stop-Process -Force
-          Write-Host "Démarrage OK."
-
-      - name: Compiler l'installeur (Inno Setup)
-        shell: pwsh
-        run: |
-          choco install innosetup --no-progress -y
-          New-Item -ItemType Directory -Force release | Out-Null
-          $iscc = Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6\ISCC.exe"
-          & $iscc "/DAppVersion=$env:VERSION" installer\PicTone.iss
-          if ($LASTEXITCODE -ne 0) { throw "Échec de la compilation de l'installeur." }
-
-      - name: Tester l'installeur (installation puis désinstallation silencieuses)
-        shell: pwsh
-        run: |
-          $setup = "release/PicTone_v${env:VERSION}_Windows.exe"
-          $install = Join-Path $env:LOCALAPPDATA "Programs\PicTone"
-          $app = Join-Path $install "PicTone.exe"
-          $shortcut = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\PicTone\PicTone.lnk"
-
-          Start-Process -FilePath $setup -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait
-          if (-not (Test-Path $app)) { throw "Fichier installé introuvable : $app" }
-          if (-not (Test-Path $shortcut)) { throw "Raccourci du menu Démarrer absent." }
-
-          $p = Start-Process -FilePath $app -PassThru
-          Start-Sleep -Seconds 12
-          if ($p.HasExited) { throw "PicTone installé s'est fermé au démarrage (code $($p.ExitCode))." }
-          Get-Process -Name PicTone -ErrorAction SilentlyContinue | Stop-Process -Force
-          Start-Sleep -Seconds 2
-
-          # Inno Setup relance une copie de son désinstalleur depuis %TEMP% : on attend le résultat.
-          $uninstaller = Join-Path $install "unins000.exe"
-          Start-Process -FilePath $uninstaller -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait
-          $deadline = (Get-Date).AddSeconds(90)
-          while ((Test-Path $app) -and ((Get-Date) -lt $deadline)) { Start-Sleep -Seconds 2 }
-          if (Test-Path $app) { throw "La désinstallation n'a pas supprimé PicTone.exe." }
-          Write-Host "Installation et désinstallation OK."
-
-      - name: Préparer le portable
-        shell: pwsh
-        run: Copy-Item "build_portable/PicTone_v${env:VERSION}_Windows.exe" "release/PicTone_v${env:VERSION}_Windows-portable.exe"
-
-      - name: Publier les fichiers Windows (artefact)
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows
-          path: release/*.exe
-          if-no-files-found: error
-
   macos:
     needs: prepare
     if: needs.prepare.outputs.exists == 'false'
@@ -148,22 +57,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-node@v4
         with:
-          python-version: "3.11"
-          cache: pip
+          node-version: 22
+          cache: npm
 
-      - name: Installer les dépendances Python
-        run: |
-          python3 -m pip install -r requirements-dev.txt
-          python3 -m pytest
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Installer le CLI Tauri
+        run: npm ci
+
+      - name: Tests Rust
+        run: cargo test --manifest-path src-tauri/Cargo.toml
 
       - name: Compiler l'application
-        run: python3 build_exe.py
+        run: npx tauri build --bundles app
 
       - name: Test de lancement de l'application
         run: |
-          APP="build_portable/PicTone.app/Contents/MacOS/PicTone"
+          APP="src-tauri/target/release/bundle/macos/PicTone.app/Contents/MacOS/pictone"
           "$APP" > "$RUNNER_TEMP/pictone.log" 2>&1 &
           PID=$!
           sleep 15
@@ -220,7 +134,7 @@ jobs:
           APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
         run: |
           mkdir -p release
-          installer/sign_and_notarize.sh "$VERSION" "build_portable/PicTone.app" "release/PicTone_v${VERSION}_macOS.dmg"
+          installer/sign_and_notarize.sh "$VERSION" "src-tauri/target/release/bundle/macos/PicTone.app" "release/PicTone_v${VERSION}_macOS.dmg"
 
       - name: Supprimer le trousseau et les clés temporaires
         if: always()
@@ -236,7 +150,7 @@ jobs:
           if-no-files-found: error
 
   publish:
-    needs: [prepare, windows, macos]
+    needs: [prepare, macos]
     if: needs.prepare.outputs.exists == 'false'
     runs-on: ubuntu-latest
     env:

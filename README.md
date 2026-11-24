@@ -1,82 +1,51 @@
 # PicTone
 
-PicTone est un éditeur d'images local moderne, sobre et performant. Depuis la 3.4, l'interface est simplifiée : filtres en vignettes, réglages regroupés, export toujours visible, fonctionnement 100 % hors ligne (aucune police ni ressource distante). Le traitement s'effectue côté client (JavaScript) via l'API HTML5 Canvas, dans une fenêtre native (pywebview / WebView2).
+PicTone est un éditeur d'images local, sobre et rapide : filtres en vignettes, réglages, dessin, recadrage, redimensionnement et export PNG / JPEG / WebP. Tout fonctionne hors ligne.
+
+L'application est construite avec [Tauri](https://tauri.app) : le cœur est en **Rust**, l'interface en HTML / CSS / JavaScript (traitement d'image par l'API Canvas), affichée dans le moteur web du système.
 
 ---
 
-## 🛠️ Architecture du projet
+## 🛠️ Architecture
 
-- `pictone.py` : Point d'entrée (fenêtre native pywebview, enregistrement, journal d'erreurs).
-- `version.txt` : Fichier de version (source unique de la version).
-- `web/` : Interface frontend (HTML, CSS, JS).
-- `tests/` : tests unitaires (`pytest`).
-- `installer/PicTone.iss` : Script de l'installeur Windows (Inno Setup).
-- `updater.py` : Mise à jour automatique depuis les Releases GitHub.
-- `build_common.py` : Utilitaires de build partagés.
-- `.github/workflows/release.yml` : Release GitHub automatique.
-- `build_exe.py` : Script de compilation automatisé pour générer le `.exe`.
-
----
-
-## 💻 Développement et Utilisation
-
-### Mode développement (local)
-1. Installez les dépendances via le fichier requirements :
-   ```bash
-   pip install -r requirements.txt
-   ```
-2. Lancez l'application :
-   ```bash
-   python pictone.py
-   ```
+- `src-tauri/` : application Rust (fenêtre, menus natifs, enregistrement, journaux, mise à jour).
+  - `src/lib.rs` : commandes exposées à l'interface ;
+  - `src/menus.rs` : menus natifs ;
+  - `src/updater.rs` : mise à jour depuis les Releases GitHub ;
+  - `src/logging.rs` : journaux.
+- `web/` : interface (`index.html`, `style.css`, `app.js`). `tauri-shim.js` relie l'interface aux commandes Rust.
+- `version.txt` : source unique de la version (`Cargo.toml` et `package.json` doivent rester alignés ; un test le vérifie).
+- `installer/` : création, signature et notarisation du `.dmg` macOS.
+- `.github/workflows/` : tests et release automatiques.
 
 ---
 
-## 🏷️ Releases automatiques
+## 💻 Développement
 
-Chaque push sur `main` qui modifie `version.txt` déclenche le workflow GitHub Actions : compilation, test de démarrage, création de l'installeur, test d'installation et de désinstallation, puis création de la Release `vX.Y.Z` avec **le seul fichier `PicTone_vX.Y.Z_Windows.exe`** (installeur) et `SHA256SUMS.txt`. Une version déjà publiée est ignorée.
-
-**Prérequis Windows :** le runtime [WebView2](https://go.microsoft.com/fwlink/p/?LinkId=2124703). En cas de plantage, un message s'affiche et le détail est dans `%LOCALAPPDATA%\PicTone\logs\crash_log.txt`.
-
----
-
-## 🍎🪟 Versions disponibles
-
-Chaque Release contient :
-- **Windows, installeur** : `PicTone_vX.Y.Z_Windows.exe` (assistant d'installation, raccourcis, désinstallation, mise à jour automatique) ;
-- **Windows, portable** : `PicTone_vX.Y.Z_Windows-portable.exe` (aucune installation) ;
-- **macOS** : `PicTone_vX.Y.Z_macOS.dmg`. Application signée et notarisée par Apple : elle s'ouvre directement, sans avertissement. Les versions antérieures à 3.3.24 n'étaient pas signées : pour celles-ci, faites un clic droit sur PicTone > **Ouvrir**, puis confirmez. Sur macOS, « Mettre à jour » télécharge la nouvelle version, la remplace et relance PicTone.
-
-## 🧪 Tests
+Prérequis : [Rust](https://rustup.rs) et Node.js.
 
 ```bash
-pip install -r requirements-dev.txt
-pytest
+npm install            # installe le CLI Tauri
+npx tauri dev          # lance l'application en mode développement
+cargo test --manifest-path src-tauri/Cargo.toml   # tests
+npx tauri build --bundles app                     # construit PicTone.app
 ```
 
-Les tests tournent automatiquement sur **Windows et macOS** à chaque push et pull request (`.github/workflows/tests.yml`). La release ne démarre qu'après la même suite de tests.
+L'application construite se trouve dans `src-tauri/target/release/bundle/macos/`.
 
 ---
 
-## 🧩 Installation (Windows)
+## 🏷️ Releases
 
-Téléchargez `PicTone_vX.Y.Z_Windows.exe` depuis la dernière Release et lancez-le. L'assistant vous laisse choisir le dossier d'installation (par défaut dans votre profil, sans droit administrateur) et le nom du dossier du menu Démarrer. Options :
-- raccourci dans le menu Démarrer (coché par défaut) ;
-- raccourci sur le Bureau (décoché par défaut) ;
-- désinstallation depuis *Paramètres > Applications*.
+Chaque push sur `main` qui modifie `version.txt` déclenche le workflow GitHub Actions : tests, compilation, test de démarrage, signature, notarisation Apple, puis création de la Release `vX.Y.Z` avec `PicTone_vX.Y.Z_macOS.dmg` et `SHA256SUMS.txt`. Une version déjà publiée est ignorée.
 
----
+L'application macOS est signée et notarisée : elle s'ouvre directement, sans avertissement. Au démarrage, PicTone consulte la dernière Release ; si une version plus récente existe, le bouton « Mettre à jour » télécharge le `.dmg`, vérifie son empreinte SHA256, remplace l'application et la relance.
 
-## 🔄 Mise à jour automatique
-
-Au démarrage, l'application consulte la dernière Release GitHub. Si une version plus récente existe, une bannière propose « Mettre à jour » : l'exe est téléchargé, son empreinte SHA256 est vérifiée (`SHA256SUMS.txt`), puis il remplace l'ancien et l'application redémarre. Hors ligne ou en cas d'erreur, l'application fonctionne normalement.
+Journaux : `~/Library/Logs/PicTone/` (`crash_log.txt`, `update.log`).
 
 ---
 
-## 📦 Compilation en `.exe` (Optionnelle)
+## 🍎 Plateformes
 
-Pour générer l'exécutable en local :
-```bash
-python build_exe.py
-```
-L'exécutable final sera généré dans le dossier `Executables/` sous le nom `PicTone_v[version].exe`.
+- **macOS** : disponible.
+- **Windows** : pas encore disponible dans cette version.

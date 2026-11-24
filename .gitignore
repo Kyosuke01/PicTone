@@ -1,69 +1,20 @@
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
-*$py.class
+# Tauri / Rust
+src-tauri/target/
+src-tauri/gen/
+node_modules/
 
-# C extensions
-*.so
-
-# Distribution / packaging
-build/
-dist/
-Executables/
+# Builds locaux
 release/
-*.icns
-file_version_info.txt
-.pytest_cache/
-build_portable/
-local/
-share/
-bin/
-lib/
-develop-eggs/
-eggs/
-docs/build/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
+*.dmg
+!src-tauri/icons/icon.icns
 
-# PyInstaller
-# PyInstaller spec files can be re-generated, and dist/build are temp folders
-*.spec
-
-# Virtual Environments
-.venv/
-venv/
-ENV/
-env/
-pyvenv.cfg
-.python-version
-
-# IDEs and Editors
+# Système et éditeurs
+.DS_Store
 .vscode/
 .idea/
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.swp
 *~
 
-# Operating System Files
-.DS_Store
-Thumbs.db
-ehthumbs.db
-Desktop.ini
-$RECYCLE.BIN/
-
-# Local configuration
+# Configuration locale
 .env
 .env.local
-
-# Configuration locale de l'éditeur / aperçu
 .claude/
