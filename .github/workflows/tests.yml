@@ -1,6 +1,6 @@
 name: Tests
 
-# Tests Rust sur macOS et vérification que l'application se construit.
+# Tests Rust sur macOS et Windows, et vérification que l'application se construit.
 # Déclenché par les pull requests et par les pushes sur main (pas de doublon sur les branches).
 on:
   push:
@@ -12,6 +12,30 @@ permissions:
   contents: read
 
 jobs:
+  windows:
+    name: Tests Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Installer le CLI Tauri
+        run: npm ci
+
+      - name: Tests Rust
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: Construire l'installeur
+        run: npx tauri build --bundles nsis
+
   macos:
     name: Tests macOS
     runs-on: macos-latest

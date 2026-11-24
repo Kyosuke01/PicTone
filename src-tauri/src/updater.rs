@@ -290,6 +290,62 @@ rm -rf "{work}"
     Ok(())
 }
 
+/// Windows : l'application est installée (le désinstalleur de l'installeur est à côté de l'exécutable).
+/// La version portable n'en a pas : elle se met à jour par téléchargement manuel.
+#[cfg(windows)]
+pub fn can_update_windows() -> bool {
+    std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|dir| dir.join("uninstall.exe").is_file()))
+        .unwrap_or(false)
+}
+
+/// Windows : télécharge et vérifie l'installeur, puis lance (après la fermeture de l'app)
+/// une installation silencieuse suivie de la relance de PicTone.
+#[cfg(windows)]
+pub fn install_windows(update: &UpdateInfo) -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    const DETACHED_PROCESS: u32 = 0x0000_0008;
+    const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let work = std::env::temp_dir().join(format!("PicTone_update_{}", std::process::id()));
+    std::fs::create_dir_all(&work).map_err(|e| e.to_string())?;
+    let setup = work.join(&update.exe_name);
+    download_verified(update, &setup)?;
+
+    // Pause de 3 s (l'app se ferme), installation silencieuse, relance.
+    let line = format!(
+        "ping -n 4 127.0.0.1 >nul & \"{}\" /S & start \"\" \"{}\"",
+        setup.display(),
+        exe.display()
+    );
+    Command::new("cmd")
+        .raw_arg(format!("/C \"{line}\""))
+        .creation_flags(CREATE_NO_WINDOW | DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP)
+        .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null())
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    update_log("Installation Windows lancée : PicTone va redémarrer.");
+    Ok(())
+}
+
+/// Installe la mise à jour par la voie native de la plateforme.
+/// None : pas de mise à jour automatique possible ici (téléchargement manuel).
+pub fn install_native(update: &UpdateInfo) -> Option<Result<(), String>> {
+    #[cfg(target_os = "macos")]
+    if can_update_macos() {
+        return Some(install_macos(update));
+    }
+    #[cfg(windows)]
+    if can_update_windows() {
+        return Some(install_windows(update));
+    }
+    let _ = update;
+    None
+}
+
 #[cfg(target_os = "macos")]
 fn is_writable(dir: &Path) -> bool {
     let probe = dir.join(format!(".pictone_write_test_{}", std::process::id()));
