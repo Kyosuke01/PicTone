@@ -12,8 +12,13 @@
             install_update: () => call('install_update'),
             set_command_states: (states) => call('set_command_states', { states }),
             log_js: (message) => call('log_js', { message: String(message) }),
-            save_file: (dataUrl, filename) => call('save_file', { dataUrl, filename }),
+            save_file: (dataUrl, filename, saveAs) => call('save_file', { dataUrl, filename, saveAs: !!saveAs }),
+            quit_app: () => call('quit_app'),
         },
     };
+    // Demande de fermeture venant de Rust (bouton rouge, Cmd+Q) : l'interface décide.
+    if (tauri.event && typeof tauri.event.listen === 'function') {
+        tauri.event.listen('quit-request', () => window.dispatchEvent(new Event('pictone-quit-request')));
+    }
     window.dispatchEvent(new Event('pywebviewready'));
 })();

@@ -286,6 +286,7 @@ async function handleFile(file) {
         const img = new Image();
         img.onload = () => {
             originalImage = img;
+            isDirty = false;
             uncroppedBaseImage = img;
             cropRectInBase = null;
 
@@ -2584,8 +2585,10 @@ function renderExportCanvas() {
     return exportCanvas;
 }
 
-btnSave.addEventListener('click', () => {
-    if (!originalImage) return;
+// Enregistre l'image rendue. saveAs = true : boîte « Enregistrer sous ». false : réécrit le dernier fichier.
+// Renvoie true si l'image est enregistrée (ou téléchargée par le navigateur), false si annulé ou en erreur.
+async function saveImage(saveAs) {
+    if (!originalImage) return false;
 
     const exportCanvas = renderExportCanvas();
 
@@ -2602,17 +2605,25 @@ btnSave.addEventListener('click', () => {
     const filename = `${originalFileName}${suffix}.${ext}`;
     const dataUrl = exportCanvas.toDataURL(mimeType, exportFormat === 'png' ? 1.0 : exportQuality);
 
-    // Try native pywebview file dialog first, fallback to browser link download
+    // Application : boîte native (ou réécriture du dernier fichier). Navigateur : téléchargement.
     if (window.pywebview && window.pywebview.api && window.pywebview.api.save_file) {
-        window.pywebview.api.save_file(dataUrl, filename)
-                        .catch(err => {
-                console.error("Native save failed, falling back to link download:", err);
-                fallbackDownload(dataUrl, filename);
-            });
-    } else {
-        fallbackDownload(dataUrl, filename);
+        try {
+            const saved = await window.pywebview.api.save_file(dataUrl, filename, saveAs);
+            if (saved) isDirty = false;
+            return !!saved;
+        } catch (err) {
+            console.error("Native save failed, falling back to link download:", err);
+            fallbackDownload(dataUrl, filename);
+            isDirty = false;
+            return true;
+        }
     }
-});
+    fallbackDownload(dataUrl, filename);
+    isDirty = false;
+    return true;
+}
+
+btnSave.addEventListener('click', () => { saveImage(true); });
 
 function fallbackDownload(dataUrl, filename) {
     const link = document.createElement('a');
@@ -2623,6 +2634,62 @@ function fallbackDownload(dataUrl, filename) {
 
 
 // ---------------------------------------------------------------------------
+// 15b. MODIFICATIONS NON ENREGISTRÉES ET FERMETURE
+// ---------------------------------------------------------------------------
+
+let isDirty = false; // vrai dès qu'une modification est faite après le chargement ou le dernier enregistrement
+
+function markDirty() {
+    if (originalImage) isDirty = true;
+}
+
+// Actions qui modifient l'image (filtres, réglages, dessin, transformations, historique, calques).
+document.addEventListener('click', (e) => {
+    if (e.target.closest('.filter-item, .brush-btn, .transform-btn, .color-preset, .filter-layer-delete, #btn-crop-apply, #btn-resize-apply, #btn-rotation-apply, #btn-clear-draw, #btn-undo, #btn-redo')) markDirty();
+}, true);
+document.addEventListener('input', (e) => {
+    if (e.target.closest('#panel-filters, #panel-draw, #panel-transform')) markDirty();
+}, true);
+document.addEventListener('pointerup', (e) => {
+    if (e.target.id && e.target.id.startsWith('draw-canvas')) markDirty();
+}, true);
+
+// Fenêtre de confirmation : renvoie 'cancel' | 'save' | 'saveAs' | 'quit'.
+function askQuitChoice() {
+    return new Promise((resolve) => {
+        const modal = document.getElementById('quit-modal');
+        const buttons = modal.querySelectorAll('[data-quit-choice]');
+        const finish = (choice) => {
+            modal.classList.add('hidden');
+            buttons.forEach((b) => b.removeEventListener('click', onClick));
+            document.removeEventListener('keydown', onKey, true);
+            resolve(choice);
+        };
+        const onClick = (e) => finish(e.currentTarget.dataset.quitChoice);
+        const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); finish('cancel'); } };
+        buttons.forEach((b) => b.addEventListener('click', onClick));
+        document.addEventListener('keydown', onKey, true);
+        modal.classList.remove('hidden');
+    });
+}
+
+function quitApp() {
+    const api = window.pywebview && window.pywebview.api;
+    if (api && typeof api.quit_app === 'function') api.quit_app();
+}
+
+// Fermeture demandée (bouton rouge, Cmd+Q) : quitte directement, ou propose d'enregistrer.
+async function handleQuitRequest() {
+    if (!isDirty || !originalImage) { quitApp(); return; }
+    const choice = await askQuitChoice();
+    if (choice === 'cancel') return;
+    if (choice === 'quit') { quitApp(); return; }
+    const saved = await saveImage(choice === 'saveAs');
+    if (saved) quitApp();
+}
+window.addEventListener('pictone-quit-request', handleQuitRequest);
+
+// ---------------------------------------------------------------------------
 // 16. RESET
 // ---------------------------------------------------------------------------
 
@@ -2630,6 +2697,7 @@ btnReset.addEventListener('click', async () => {
     const ok = await showConfirm("Réinitialiser l'éditeur", "Voulez-vous réinitialiser l'image et l'éditeur ? Cette action est irréversible.");
     if (ok) {
         originalImage      = null;
+        isDirty            = false;
         uncroppedBaseImage = null;
         cropRectInBase     = null;
         originalFileName   = "image";
@@ -2911,6 +2979,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 zoomPanX -= e.deltaY * 0.8;
                 updateViewerTransform();
             }
+        } else if (originalImage && e.target.closest && e.target.closest('.workspace')) {
+            // Trackpad, deux doigts : déplacement naturel sur l'image (le sens suit les réglages du système).
+            const canvas = getActiveDrawCanvas();
+            const scaledW = (canvas.clientWidth || canvas.width) * zoomScale;
+            const scaledH = (canvas.clientHeight || canvas.height) * zoomScale;
+            const viewerRect = imageViewer.getBoundingClientRect();
+            const canPanX = scaledW > viewerRect.width;
+            const canPanY = scaledH > viewerRect.height;
+            if (canPanX || canPanY) {
+                e.preventDefault();
+                if (canPanX) zoomPanX -= e.deltaX;
+                if (canPanY) zoomPanY -= e.deltaY;
+                updateViewerTransform();
+            }
         }
     }, { passive: false });
 
@@ -3103,7 +3185,7 @@ window.picToneCommand = (cmd) => {
     };
     switch (cmd) {
         case 'open':        fileInput.click(); break;
-        case 'save':        click('btn-save'); break;
+        case 'save':        saveImage(false); break;
         case 'reset':       click('btn-reset'); break;
         case 'undo':        click('btn-undo'); break;
         case 'redo':        click('btn-redo'); break;
