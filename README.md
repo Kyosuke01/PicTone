@@ -1,6 +1,6 @@
 # PicTone
 
-PicTone est un éditeur d'images local moderne, sobre et performant. Le traitement s'effectue côté client (JavaScript) via l'API HTML5 Canvas, dans une fenêtre native (pywebview / WebView2).
+PicTone est un éditeur d'images local moderne, sobre et performant. Depuis la 3.4, l'interface est simplifiée : filtres en vignettes, réglages regroupés, export toujours visible, fonctionnement 100 % hors ligne (aucune police ni ressource distante). Le traitement s'effectue côté client (JavaScript) via l'API HTML5 Canvas, dans une fenêtre native (pywebview / WebView2).
 
 ---
 
