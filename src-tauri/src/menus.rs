@@ -41,6 +41,10 @@ pub fn spec() -> Vec<MenuSpec> {
         MenuSpec { title: "Édition", items: vec![
             cmd("undo", "Annuler", Some("Z")),
             cmd("redo", "Rétablir", Some("Y")),
+            Item::Separator,
+            cmd("cut", "Couper", None),
+            cmd("copy", "Copier", None),
+            cmd("selectAll", "Tout sélectionner", None),
         ]},
         MenuSpec { title: "Affichage", items: vec![
             cmd("zoomIn", "Zoom avant", Some("+")),
@@ -101,14 +105,10 @@ pub fn build(app: &AppHandle) -> tauri::Result<(Menu<Wry>, HashMap<String, MenuI
                 }
             }
         }
-        // Couper / copier / coller / tout sélectionner : indispensables dans les champs numériques
-        // et pour coller une image (sinon macOS ignore ⌘C / ⌘V dans la fenêtre).
+        // Coller reste un élément natif : toujours actif, même sans image (il sert à importer).
         if m.title == "Édition" {
             sub.append(&PredefinedMenuItem::separator(app)?)?;
-            sub.append(&PredefinedMenuItem::cut(app, Some("Couper"))?)?;
-            sub.append(&PredefinedMenuItem::copy(app, Some("Copier"))?)?;
             sub.append(&PredefinedMenuItem::paste(app, Some("Coller"))?)?;
-            sub.append(&PredefinedMenuItem::select_all(app, Some("Tout sélectionner"))?)?;
         }
         menu.append(&sub)?;
     }
