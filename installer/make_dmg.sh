@@ -14,9 +14,9 @@ TMP_BG="$(mktemp -d)"
 trap 'rm -rf "$STAGE" "$TMP_BG"' EXIT
 
 cp -R "$APP" "$STAGE/PicTone.app"
-# Fond haute résolution (Retina) : une seule image contenant 1x et 2x.
-tiffutil -cathidpicheck "$ROOT/installer/dmg_background.png" "$ROOT/installer/dmg_background@2x.png" \
-  -out "$TMP_BG/background.tiff"
+# Fond haute résolution (Retina), généré à la volée : une seule image contenant 1x et 2x.
+swift "$ROOT/installer/make_dmg_background.swift" "$TMP_BG/bg.png" "$TMP_BG/bg@2x.png"
+tiffutil -cathidpicheck "$TMP_BG/bg.png" "$TMP_BG/bg@2x.png" -out "$TMP_BG/background.tiff"
 
 rm -f "$OUT"
 create-dmg \
