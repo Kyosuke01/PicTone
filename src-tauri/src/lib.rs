@@ -154,15 +154,8 @@ pub fn run() {
             Ok(())
         })
         .on_menu_event(|app, event| {
-            let id = event.id().as_ref();
-            if id == "about" {
-                let text = format!("{APP_NAME} {}\nÉditeur d'images local.", version());
-                if let Some(w) = app.get_webview_window("main") {
-                    let _ = w.eval(format!("setTimeout(() => alert({}), 0)", serde_json::to_string(&text).unwrap()));
-                }
-            } else {
-                send_command(app, id);
-            }
+            // Toutes les commandes (dont « À propos ») passent par l'interface : alert() n'y marche pas.
+            send_command(app, event.id().as_ref());
         })
         .invoke_handler(tauri::generate_handler![
             get_version, log_js, check_update, set_command_states, install_update, save_file

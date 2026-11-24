@@ -146,7 +146,6 @@ mod tests {
         for m in spec() {
             for it in m.items {
                 if let Item::Command(e) = it {
-                    if e.id == "about" { continue; } // géré côté Rust
                     assert!(js.contains(&format!("'{}'", e.id)) || js.contains(&format!("\"{}\"", e.id)),
                         "commande absente d'app.js : {}", e.id);
                 }
