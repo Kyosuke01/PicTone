@@ -2753,7 +2753,7 @@ async function checkUpdatesWithReport() {
     else if (info.available) text = `Mise à jour disponible : ${info.version}.\nUtilisez le bouton « Mettre à jour ».`;
     else if (info.up_to_date) text = `PicTone ${info.version} est à jour.`;
     else text = 'Mise à jour non applicable sur cette plateforme.';
-    setTimeout(() => alert(text), 0);
+    showAlert('Mises à jour', text);
 }
 
 async function installUpdate() {
@@ -3043,7 +3043,14 @@ function applyPlatformShortcuts() {
 }
 applyPlatformShortcuts();
 
-// Commandes des menus natifs : Python appelle window.evaluate_js("picToneCommand('…')").
+// « À propos » : fenêtre intégrée (alert() ne s'affiche pas dans la fenêtre native).
+async function showAboutDialog() {
+    let version = '';
+    try { version = await window.pywebview.api.get_version(); } catch (e) { version = ''; }
+    showAlert('À propos de PicTone', `PicTone ${version}\nÉditeur d'images local.`);
+}
+
+// Commandes des menus natifs (appelées depuis Rust).
 window.picToneCommand = (cmd) => {
     const click = (id) => {
         const el = document.getElementById(id);
@@ -3067,6 +3074,7 @@ window.picToneCommand = (cmd) => {
         case 'panelDraw':      click('stab-draw'); break;
         case 'panelTransform': click('stab-transform'); break;
         case 'checkUpdates':   checkUpdatesWithReport(); break;
+        case 'about':          showAboutDialog(); break;
         default: updLog(`commande de menu inconnue : ${cmd}`);
     }
     updLog(`commande de menu : ${cmd}`);
