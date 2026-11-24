@@ -242,14 +242,25 @@ dropZone.addEventListener('drop', (e) => {
 });
 dropZone.addEventListener('click', () => fileInput.click());
 fileInput.addEventListener('change', (e) => {
-    if (e.target.files.length > 0) handleFile(e.target.files[0]);
+    if (e.target.files.length === 0) return;
+    const file = e.target.files[0];
+    if (pendingLayerImport) {
+        pendingLayerImport = false;
+        if (file.type.match('image.*')) addImageLayerFromBlob(file, file.name || 'Calque');
+    } else {
+        handleFile(file);
+    }
+    e.target.value = '';
 });
 
 const appWorkspace = document.getElementById('app-workspace');
 ['dragenter', 'dragover'].forEach(evt => appWorkspace.addEventListener(evt, e => e.preventDefault(), false));
 appWorkspace.addEventListener('drop', (e) => {
     e.preventDefault();
-    if (e.dataTransfer.files.length > 0) handleFile(e.dataTransfer.files[0]);
+    if (e.dataTransfer.files.length === 0) return;
+    const file = e.dataTransfer.files[0];
+    if (originalImage && file.type.match('image.*')) addImageLayerFromBlob(file, file.name || 'Calque');
+    else handleFile(file);
 });
 
 btnChangeImage.addEventListener('click', () => fileInput.click());
@@ -259,10 +270,232 @@ window.addEventListener('paste', (e) => {
     for (let i = 0; i < items.length; i++) {
         if (items[i].type.indexOf('image') !== -1) {
             const blob = items[i].getAsFile();
-            originalFileName = "image-collee";
-            handleFile(blob);
+            if (originalImage) {
+                addImageLayerFromBlob(blob, 'Calque collé'); // une image est déjà ouverte : nouveau calque
+            } else {
+                originalFileName = "image-collee";
+                handleFile(blob);
+            }
             break;
         }
+    }
+});
+
+// ---------------------------------------------------------------------------
+// CALQUES D'IMAGE : images ajoutées par-dessus l'image de base (coller, glisser, « + »).
+// Coordonnées en pixels de l'image de base. Les filtres s'appliquent à l'ensemble (base + calques).
+// Recadrage, retournement et redimensionnement fusionnent d'abord les calques dans l'image de base.
+// ---------------------------------------------------------------------------
+
+let imageLayers = [];        // { id, name, img, x, y, w, h, opacity (0-1), visible }
+let selectedLayerId = null;
+let layerSeq = 0;
+let pendingLayerImport = false; // le prochain fichier choisi devient un calque
+
+// Image de base + calques visibles, à la taille de la base. Sans calque : la base elle-même.
+function composeSource(base) {
+    if (!imageLayers.some((l) => l.visible)) return base;
+    const bw = base.naturalWidth || base.width;
+    const bh = base.naturalHeight || base.height;
+    const c = document.createElement('canvas');
+    c.width = bw;
+    c.height = bh;
+    const ctx = c.getContext('2d');
+    ctx.drawImage(base, 0, 0, bw, bh);
+    for (const layer of imageLayers) {
+        if (!layer.visible) continue;
+        ctx.globalAlpha = layer.opacity;
+        ctx.drawImage(layer.img, layer.x, layer.y, layer.w, layer.h);
+    }
+    ctx.globalAlpha = 1;
+    return c;
+}
+
+// Fusionne les calques dans l'image de base (avant une opération qui déplace les pixels).
+function flattenLayers() {
+    if (!imageLayers.length || !originalImage) return Promise.resolve();
+    const composed = composeSource(originalImage);
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+            originalImage = img;
+            uncroppedBaseImage = img;
+            cropRectInBase = null;
+            imageLayers = [];
+            selectedLayerId = null;
+            imageLayers = [];
+            selectedLayerId = null;
+            markDirty();
+            updateControlStates();
+            resolve();
+        };
+        img.src = composed.toDataURL('image/png');
+    });
+}
+
+function addImageLayer(img, name) {
+    if (!originalImage) return;
+    const bw = originalImage.naturalWidth;
+    const bh = originalImage.naturalHeight;
+    const iw = img.naturalWidth;
+    const ih = img.naturalHeight;
+    const scale = Math.min(1, bw / iw, bh / ih); // réduit seulement si plus grand que la base
+    const w = Math.round(iw * scale);
+    const h = Math.round(ih * scale);
+    const layer = {
+        id: ++layerSeq, name, img,
+        x: Math.round((bw - w) / 2), y: Math.round((bh - h) / 2),
+        w, h, opacity: 1, visible: true,
+    };
+    imageLayers.push(layer);
+    selectedLayerId = layer.id;
+    markDirty();
+    updateControlStates();
+    processFilter();
+}
+
+function addImageLayerFromBlob(blob, name) {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => {
+        addImageLayer(img, name);
+        URL.revokeObjectURL(url);
+    };
+    img.onerror = () => {
+        URL.revokeObjectURL(url);
+        showAlert('Calque impossible', "Cette image ne peut pas être ajoutée comme calque.");
+    };
+    img.src = url;
+}
+
+function removeImageLayer(id) {
+    imageLayers = imageLayers.filter((l) => l.id !== id);
+    if (selectedLayerId === id) selectedLayerId = imageLayers.length ? imageLayers[imageLayers.length - 1].id : null;
+    markDirty();
+    updateControlStates();
+    processFilter();
+}
+
+function selectedImageLayer() {
+    return imageLayers.find((l) => l.id === selectedLayerId) || null;
+}
+
+// Panneau « Calques d'image » : liste, visibilité, opacité, position, suppression.
+const imageLayersPanel = document.getElementById('image-layers-panel');
+const imageLayersList  = document.getElementById('image-layers-list');
+const imageLayerProps  = document.getElementById('image-layer-props');
+const layerXInput      = document.getElementById('layer-x');
+const layerYInput      = document.getElementById('layer-y');
+
+function renderImageLayersPanel() {
+    imageLayersPanel.classList.toggle('hidden', !originalImage);
+    if (!originalImage) return;
+    imageLayersList.textContent = '';
+    if (!imageLayers.length) {
+        const empty = document.createElement('p');
+        empty.className = 'image-layers-empty';
+        empty.textContent = 'Aucun calque. Collez une image (⌘V) ou ajoutez-en une avec le bouton +.';
+        imageLayersList.appendChild(empty);
+    }
+    // Du calque le plus haut au plus bas
+    for (const layer of [...imageLayers].reverse()) {
+        const row = document.createElement('div');
+        row.className = 'image-layer-item' + (layer.id === selectedLayerId ? ' selected' : '');
+        row.dataset.layerId = String(layer.id);
+
+        const eye = document.createElement('button');
+        eye.type = 'button';
+        eye.className = 'layer-eye';
+        eye.title = layer.visible ? 'Masquer le calque' : 'Afficher le calque';
+        eye.textContent = layer.visible ? '●' : '○';
+        eye.addEventListener('click', (e) => {
+            e.stopPropagation();
+            layer.visible = !layer.visible;
+            markDirty();
+            updateControlStates();
+            processFilter();
+        });
+
+        const name = document.createElement('span');
+        name.className = 'layer-name';
+        name.textContent = layer.name;
+
+        const opacity = document.createElement('input');
+        opacity.type = 'range';
+        opacity.min = '0';
+        opacity.max = '100';
+        opacity.value = String(Math.round(layer.opacity * 100));
+        opacity.title = 'Opacité du calque';
+        opacity.addEventListener('click', (e) => e.stopPropagation());
+        opacity.addEventListener('input', () => {
+            layer.opacity = Number(opacity.value) / 100;
+            markDirty();
+            processFilter();
+        });
+
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.className = 'layer-delete';
+        del.title = 'Supprimer le calque';
+        del.textContent = '×';
+        del.addEventListener('click', (e) => {
+            e.stopPropagation();
+            removeImageLayer(layer.id);
+        });
+
+        row.addEventListener('click', () => {
+            selectedLayerId = layer.id;
+            renderImageLayersPanel();
+        });
+
+        row.append(eye, name, opacity, del);
+        imageLayersList.appendChild(row);
+    }
+    const sel = selectedImageLayer();
+    imageLayerProps.classList.toggle('hidden', !sel);
+    if (sel) {
+        layerXInput.value = String(sel.x);
+        layerYInput.value = String(sel.y);
+    }
+}
+
+function setSelectedLayerPosition(x, y) {
+    const sel = selectedImageLayer();
+    if (!sel) return;
+    sel.x = Math.round(x);
+    sel.y = Math.round(y);
+    markDirty();
+    renderImageLayersPanel();
+    processFilter();
+}
+
+layerXInput.addEventListener('change', () => {
+    const sel = selectedImageLayer();
+    if (sel) setSelectedLayerPosition(Number(layerXInput.value) || 0, sel.y);
+});
+layerYInput.addEventListener('change', () => {
+    const sel = selectedImageLayer();
+    if (sel) setSelectedLayerPosition(sel.x, Number(layerYInput.value) || 0);
+});
+
+document.getElementById('btn-add-layer').addEventListener('click', () => {
+    if (!originalImage) return;
+    pendingLayerImport = true;
+    fileInput.click();
+});
+
+// Flèches : déplacer le calque sélectionné (1 px ; Maj = 10 px). Supprimer : retirer le calque.
+window.addEventListener('keydown', (e) => {
+    if (!selectedImageLayer() || isTextFieldFocused()) return;
+    const sel = selectedImageLayer();
+    const step = e.shiftKey ? 10 : 1;
+    const moves = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
+    if (moves[e.key]) {
+        e.preventDefault();
+        setSelectedLayerPosition(sel.x + moves[e.key][0], sel.y + moves[e.key][1]);
+    } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        removeImageLayer(sel.id);
     }
 });
 
@@ -749,7 +982,7 @@ function processFilter() {
     const targetCanvas = isSplit ? canvasFilteredSplit : canvasFilteredEdit;
     const refImage     = isSplit ? imgOriginalSplit    : imgReferenceEdit;
 
-    const imgToDraw = isCropping ? uncroppedBaseImage : originalImage;
+    const imgToDraw = isCropping ? uncroppedBaseImage : composeSource(originalImage);
 
     const w = refImage.clientWidth  || imgToDraw.width;
     const h = refImage.clientHeight || imgToDraw.height;
@@ -1645,8 +1878,9 @@ function bakeImageToCanvas(img) {
 
 
 
-function flipImage(horizontal) {
+async function flipImage(horizontal) {
     if (!originalImage) return;
+    await flattenLayers();
     
     // Flip full-resolution memory canvases synchronously
     baseDrawCanvasSplit = getFlippedCanvas(baseDrawCanvasSplit, horizontal);
@@ -1696,8 +1930,9 @@ function flipImage(horizontal) {
     newImg.src = dst.toDataURL('image/png');
 }
 
-function resizeImageTo(targetW, targetH) {
+async function resizeImageTo(targetW, targetH) {
     if (!originalImage) return;
+    await flattenLayers();
 
     // Resize full-resolution memory canvases synchronously to keep drawings aligned
     if (baseDrawCanvasSplit.width > 0 && baseDrawCanvasSplit.height > 0) {
@@ -2092,7 +2327,9 @@ btnCropStart.addEventListener('click', () => {
 btnCropCancel.addEventListener('click', cancelCrop);
 btnCropApply.addEventListener('click',  applyCrop);
 
-function startCrop() {
+async function startCrop() {
+    if (!originalImage || !uncroppedBaseImage) return;
+    await flattenLayers();
     if (!originalImage || !uncroppedBaseImage) return;
 
     isCropping = true;
@@ -2438,6 +2675,7 @@ function canvasHasInk(canvas) {
 // Un seul endroit décide quels contrôles sont actifs ; les autres sont grisés (et inertes).
 function updateControlStates() {
     const hasImage = !!originalImage;
+    renderImageLayersPanel();
     const cropping = !!isCropping;
     const sectionsActive = hasImage && !cropping;
     const hasDraw = !!(history[historyIdx] && history[historyIdx].hasDraw);
@@ -2552,7 +2790,7 @@ function renderExportCanvas() {
         scaledBlur     = scaledBlur * (w / displayW);
     }
 
-    applyFiltersToContext(tempCtx, originalImage, w, h,
+    applyFiltersToContext(tempCtx, composeSource(originalImage), w, h,
         activeFilters, scaledBlur, parseInt(sliderOpacity.value));
 
     // Composite draw layer on top
@@ -2698,6 +2936,8 @@ btnReset.addEventListener('click', async () => {
     if (ok) {
         originalImage      = null;
         isDirty            = false;
+        imageLayers        = [];
+        selectedLayerId    = null;
         uncroppedBaseImage = null;
         cropRectInBase     = null;
         originalFileName   = "image";
