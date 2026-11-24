@@ -1,6 +1,6 @@
 [package]
 name = "pictone"
-version = "1.0.3"
+version = "1.0.2"
 description = "PicTone — éditeur d'images local"
 edition = "2021"
 
