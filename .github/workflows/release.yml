@@ -2,6 +2,8 @@ name: Release
 
 # Publie une Release GitHub (tag vX.Y.Z) à chaque push sur main qui modifie version.txt.
 # Assets publiés :
+#   - PicTone_vX.Y.Z_Windows.exe           installeur Windows (utilisé par la mise à jour automatique)
+#   - PicTone_vX.Y.Z_Windows-portable.exe  version portable Windows
 #   - PicTone_vX.Y.Z_macOS.dmg             application macOS (signée et notarisée)
 #   - SHA256SUMS.txt
 on:
@@ -25,7 +27,7 @@ jobs:
       tag: ${{ steps.version.outputs.tag }}
       exists: ${{ steps.exists.outputs.exists }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Lire la version
         id: version
@@ -47,6 +49,84 @@ jobs:
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
+  windows:
+    needs: prepare
+    if: needs.prepare.outputs.exists == 'false'
+    runs-on: windows-latest
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Installer le CLI Tauri
+        run: npm ci
+
+      - name: Tests Rust
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: Compiler l'installeur
+        run: npx tauri build --bundles nsis
+
+      - name: Test de démarrage (portable)
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath "src-tauri/target/release/pictone.exe" -PassThru
+          Start-Sleep -Seconds 15
+          if ($p.HasExited) {
+            $log = Join-Path $env:LOCALAPPDATA "PicTone/logs/crash_log.txt"
+            if (Test-Path $log) { Get-Content $log }
+            throw "PicTone s'est fermé au démarrage (code $($p.ExitCode))."
+          }
+          Stop-Process -Id $p.Id -Force
+          Write-Host "Démarrage OK."
+
+      - name: Préparer les fichiers
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force release | Out-Null
+          $setup = Get-ChildItem "src-tauri/target/release/bundle/nsis/*-setup.exe" | Select-Object -First 1
+          if (-not $setup) { throw "Installeur introuvable." }
+          Copy-Item $setup.FullName "release/PicTone_v${env:VERSION}_Windows.exe"
+          Copy-Item "src-tauri/target/release/pictone.exe" "release/PicTone_v${env:VERSION}_Windows-portable.exe"
+
+      - name: Tester l'installeur (installation puis désinstallation silencieuses)
+        shell: pwsh
+        run: |
+          $setup = "release/PicTone_v${env:VERSION}_Windows.exe"
+          Start-Process -FilePath $setup -ArgumentList "/S" -Wait
+          $install = Join-Path $env:LOCALAPPDATA "PicTone"
+          $app = Join-Path $install "pictone.exe"
+          if (-not (Test-Path $app)) { throw "Fichier installé introuvable : $app" }
+          if (-not (Test-Path (Join-Path $install "uninstall.exe"))) { throw "Désinstalleur absent." }
+
+          $p = Start-Process -FilePath $app -PassThru
+          Start-Sleep -Seconds 15
+          if ($p.HasExited) { throw "PicTone installé s'est fermé au démarrage (code $($p.ExitCode))." }
+          Stop-Process -Id $p.Id -Force
+          Start-Sleep -Seconds 2
+
+          Start-Process -FilePath (Join-Path $install "uninstall.exe") -ArgumentList "/S" -Wait
+          $deadline = (Get-Date).AddSeconds(90)
+          while ((Test-Path $app) -and ((Get-Date) -lt $deadline)) { Start-Sleep -Seconds 2 }
+          if (Test-Path $app) { throw "La désinstallation n'a pas supprimé pictone.exe." }
+          Write-Host "Installation et désinstallation OK."
+
+      - name: Publier les fichiers Windows (artefact)
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows
+          path: release/*.exe
+          if-no-files-found: error
+
   macos:
     needs: prepare
     if: needs.prepare.outputs.exists == 'false'
@@ -55,9 +135,9 @@ jobs:
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -143,23 +223,23 @@ jobs:
           rm -f "${APPLE_API_KEY_PATH:-/nonexistent}" "$RUNNER_TEMP/certificate.p12"
 
       - name: Publier le .dmg (artefact)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: macos
           path: release/*.dmg
           if-no-files-found: error
 
   publish:
-    needs: [prepare, macos]
+    needs: [prepare, windows, macos]
     if: needs.prepare.outputs.exists == 'false'
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
       TAG: ${{ needs.prepare.outputs.tag }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: release
           merge-multiple: true

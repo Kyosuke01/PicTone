@@ -65,33 +65,30 @@ async fn install_update(app: AppHandle, state: State<'_, UpdateState>) -> Result
         return Ok(json!({"ok": false, "error": "Aucune mise à jour disponible."}));
     }
 
-    #[cfg(target_os = "macos")]
-    if updater::can_update_macos() {
-        let to_install = info.clone();
-        let outcome = tauri::async_runtime::spawn_blocking(move || updater::install_macos(&to_install))
-            .await
-            .unwrap_or_else(|e| Err(e.to_string()));
-        return Ok(match outcome {
-            Ok(()) => {
-                // Laisse le temps de répondre à l'interface, puis ferme : le script attend la fin du processus.
-                let handle = app.clone();
-                tauri::async_runtime::spawn(async move {
-                    tokio_sleep(500).await;
-                    handle.exit(0);
-                });
-                json!({"ok": true})
-            }
-            Err(e) => {
-                update_log(&format!("ÉCHEC de l'installation : {e}"));
-                json!({"ok": false, "error": e})
-            }
-        });
+    let to_install = info.clone();
+    let native = tauri::async_runtime::spawn_blocking(move || updater::install_native(&to_install))
+        .await
+        .unwrap_or_else(|e| Some(Err(e.to_string())));
+    match native {
+        Some(Ok(())) => {
+            // Laisse le temps de répondre à l'interface, puis ferme : le script attend la fin du processus.
+            let handle = app.clone();
+            tauri::async_runtime::spawn(async move {
+                tokio_sleep(500).await;
+                handle.exit(0);
+            });
+            Ok(json!({"ok": true}))
+        }
+        Some(Err(e)) => {
+            update_log(&format!("ÉCHEC de l'installation : {e}"));
+            Ok(json!({"ok": false, "error": e}))
+        }
+        None => {
+            update_log(&format!("Mode : téléchargement manuel ({}).", info.exe_url));
+            updater::open_url(&info.exe_url);
+            Ok(json!({"ok": true, "manual": true}))
+        }
     }
-
-    let _ = &app;
-    update_log(&format!("Mode : téléchargement manuel ({}).", info.exe_url));
-    updater::open_url(&info.exe_url);
-    Ok(json!({"ok": true, "manual": true}))
 }
 
 async fn tokio_sleep(ms: u64) {

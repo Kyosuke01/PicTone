@@ -28,7 +28,8 @@ Prérequis : [Rust](https://rustup.rs) et Node.js.
 npm install            # installe le CLI Tauri
 npx tauri dev          # lance l'application en mode développement
 cargo test --manifest-path src-tauri/Cargo.toml   # tests
-npx tauri build --bundles app                     # construit PicTone.app
+npx tauri build --bundles app                     # construit PicTone.app (macOS)
+npx tauri build --bundles nsis                    # construit l'installeur (Windows)
 ```
 
 L'application construite se trouve dans `src-tauri/target/release/bundle/macos/`.
@@ -41,11 +42,12 @@ Chaque push sur `main` qui modifie `version.txt` déclenche le workflow GitHub A
 
 L'application macOS est signée et notarisée : elle s'ouvre directement, sans avertissement. Au démarrage, PicTone consulte la dernière Release ; si une version plus récente existe, le bouton « Mettre à jour » télécharge le `.dmg`, vérifie son empreinte SHA256, remplace l'application et la relance.
 
-Journaux : `~/Library/Logs/PicTone/` (`crash_log.txt`, `update.log`).
+Journaux : `~/Library/Logs/PicTone/` sur macOS, `%LOCALAPPDATA%\PicTone\logs\` sur Windows (`crash_log.txt`, `update.log`).
 
 ---
 
 ## 🍎 Plateformes
 
-- **macOS** : disponible.
-- **Windows** : pas encore disponible dans cette version.
+- **macOS** : `PicTone_vX.Y.Z_macOS.dmg` (signé et notarisé).
+- **Windows, installeur** : `PicTone_vX.Y.Z_Windows.exe` (installation dans votre profil, sans droits administrateur, raccourcis, désinstallation depuis *Paramètres > Applications*, mise à jour automatique).
+- **Windows, portable** : `PicTone_vX.Y.Z_Windows-portable.exe` (aucune installation ; mise à jour par téléchargement manuel). Nécessite le runtime [WebView2](https://go.microsoft.com/fwlink/p/?LinkId=2124703), déjà présent sur Windows 11.
