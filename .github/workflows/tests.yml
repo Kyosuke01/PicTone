@@ -1,6 +1,6 @@
 name: Tests
 
-# Tests sur Windows et macOS, et construction du .dmg macOS téléchargeable (artefact).
+# Tests Rust sur macOS et vérification que l'application se construit.
 # Déclenché par les pull requests et par les pushes sur main (pas de doublon sur les branches).
 on:
   push:
@@ -12,56 +12,26 @@ permissions:
   contents: read
 
 jobs:
-  windows:
-    name: Tests Windows
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-          cache: pip
-
-      - name: Installer les dépendances de test
-        run: python -m pip install -r requirements-dev.txt
-
-      - name: Lancer les tests
-        run: python -m pytest
-
   macos:
     name: Tests macOS
-    # Runner GitHub (et non un Mac personnel) : dépôt public, le code des pushes sur main s'y exécute.
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-node@v4
         with:
-          python-version: "3.11"
-          cache: pip
+          node-version: 22
+          cache: npm
 
-      - name: Installer les dépendances de test
-        run: python3 -m pip install -r requirements-dev.txt
-
-      - name: Lancer les tests
-        run: python3 -m pytest
-
-      - name: Compiler l'application
-        run: python3 build_exe.py
-
-      - name: Installer create-dmg
-        run: brew install create-dmg
-
-      - name: Créer le .dmg
-        run: |
-          VERSION="$(tr -d '[:space:]' < version.txt)"
-          mkdir -p release
-          installer/make_dmg.sh "$VERSION" "build_portable/PicTone.app" "release/PicTone_v${VERSION}_macOS.dmg"
-
-      - name: Publier le .dmg (artefact téléchargeable)
-        uses: actions/upload-artifact@v4
+      - uses: Swatinem/rust-cache@v2
         with:
-          name: PicTone-macOS-dmg
-          path: release/*.dmg
-          if-no-files-found: error
+          workspaces: src-tauri
+
+      - name: Installer le CLI Tauri
+        run: npm ci
+
+      - name: Tests Rust
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: Construire l'application
+        run: npx tauri build --bundles app

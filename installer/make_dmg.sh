@@ -21,7 +21,7 @@ tiffutil -cathidpicheck "$ROOT/installer/dmg_background.png" "$ROOT/installer/dm
 rm -f "$OUT"
 create-dmg \
   --volname "PicTone ${VERSION}" \
-  --volicon "$ROOT/pictone.icns" \
+  --volicon "$ROOT/src-tauri/icons/icon.icns" \
   --background "$TMP_BG/background.tiff" \
   --window-pos 200 120 \
   --window-size 660 400 \
