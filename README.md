@@ -13,7 +13,15 @@ L'application est construite avec [Tauri](https://tauri.app) : le cœur est en *
   - `src/menus.rs` : menus natifs ;
   - `src/updater.rs` : mise à jour depuis les Releases GitHub ;
   - `src/logging.rs` : journaux.
-- `web/` : interface (`index.html`, `style.css`, `app.js`). `tauri-shim.js` relie l'interface aux commandes Rust.
+- `web/` : interface.
+  - `index.html`, `style.css` ;
+  - `js/engine.js` : filtres, flou, contours, réglages ;
+  - `js/model.js` : document, calques, historique, fichier `.pictone` ;
+  - `js/view.js` : affichage, zoom, pinceau, recadrage ;
+  - `js/io.js` : ouvrir, coller, enregistrer, exporter ;
+  - `js/updater.js` : mise à jour automatique ;
+  - `js/ui.js` : panneaux, raccourcis, menus, fermeture ;
+  - `tauri-shim.js` relie l'interface aux commandes Rust.
 - `version.txt` : source unique de la version (`Cargo.toml` et `package.json` doivent rester alignés ; un test le vérifie).
 - `installer/` : création, signature et notarisation du `.dmg` macOS.
 - `.github/workflows/` : tests et release automatiques.

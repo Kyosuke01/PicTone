@@ -1256,3 +1256,202 @@ select:disabled,
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { transition: none !important; animation: none !important; }
 }
+
+/* =====================================================================
+   PicTone 1.2 — éditeur à calques
+   ===================================================================== */
+
+/* Éditeur : barre d'outils + zone de travail */
+.editor {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+.editor.hidden { display: none !important; }
+.viewer-toolbar { flex-wrap: wrap; }
+.zoom-group { gap: 4px; align-items: center; }
+.zoom-label {
+    min-width: 52px;
+    text-align: center;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+}
+#btn-zoom-actual, #btn-zoom-fit { font-size: 12px; }
+
+.viewport {
+    flex: 1;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    cursor: default;
+    touch-action: none;
+}
+.viewport.panning { cursor: grabbing; }
+
+.stage-wrap {
+    position: relative;
+    flex-shrink: 0;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    background: #070708;
+    transform-origin: center center;
+}
+.stage-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: block;
+    pointer-events: none;
+    user-select: none;
+}
+.stage-before { clip-path: inset(0 50% 0 0); }
+.stage-wrap .crop-overlay { background: none; }
+.stage-wrap .crop-overlay.hidden { display: none; }
+.stage-wrap .crop-selection { cursor: move; }
+
+.brush-preview-cursor.erase { border-style: dashed; }
+
+/* Cible des réglages : Image entière / Calque actif */
+.target-switch {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+    padding: 3px;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-m);
+    margin-bottom: 8px;
+}
+.target-btn {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 600;
+    padding: 7px 6px;
+    border-radius: 7px;
+    cursor: pointer;
+}
+.target-btn:hover:not(:disabled) { color: var(--text-main); }
+.target-btn.active { background: var(--bg-hover); color: #fff; }
+.target-btn:disabled { color: var(--text-disabled); cursor: default; }
+.target-hint {
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.45;
+    margin-bottom: 12px;
+}
+
+/* Calques */
+.layers-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+}
+.icon-btn {
+    width: 30px;
+    height: 30px;
+    border-radius: 7px;
+    border: 1px solid transparent;
+    background: var(--bg-raised);
+    color: var(--text-main);
+    font-size: 14px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.icon-btn:hover:not(:disabled) { background: var(--bg-hover); }
+.icon-btn:disabled { color: var(--text-disabled); cursor: default; }
+.layers-sep { width: 1px; height: 18px; background: var(--border-color); margin: 0 4px; }
+
+.layers-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 340px;
+    overflow-y: auto;
+    padding: 2px;
+    margin-bottom: 14px;
+}
+.layer-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: var(--radius-m);
+    border: 1px solid transparent;
+    background: var(--bg-raised);
+    cursor: pointer;
+}
+.layer-row:hover { background: var(--bg-hover); }
+.layer-row.selected { border-color: var(--accent-color); background: var(--accent-soft); }
+.layer-row.hidden-layer .layer-thumb,
+.layer-row.hidden-layer .layer-name { opacity: 0.4; }
+.layer-eye {
+    background: none;
+    border: none;
+    color: var(--text-main);
+    font-size: 13px;
+    width: 22px;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+.layer-thumb {
+    height: 36px;
+    width: auto;
+    border-radius: 4px;
+    flex-shrink: 0;
+    border: 1px solid var(--border-color);
+}
+.layer-name {
+    flex: 1;
+    min-width: 0;
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.layer-rename {
+    flex: 1;
+    min-width: 0;
+    font-size: 12px;
+    padding: 4px 6px;
+    background: var(--bg-workspace);
+    border: 1px solid var(--accent-color);
+    border-radius: 5px;
+    color: var(--text-main);
+    user-select: text;
+}
+.layer-props .section-subtitle span { color: var(--text-main); text-transform: none; letter-spacing: 0; font-weight: 600; }
+.controls-section.disabled .layers-list,
+.controls-section.disabled .layers-toolbar { pointer-events: none; }
+
+/* Raccourcis (fenêtre d'aide) */
+.shortcuts {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 18px;
+    font-size: 12px;
+    margin-bottom: 0;
+}
+kbd {
+    font-family: var(--font-sans);
+    font-size: 11px;
+    background: var(--bg-raised);
+    border: 1px solid var(--border-hover);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    padding: 1px 5px;
+    color: var(--text-main);
+}
+@media (max-width: 640px) { .shortcuts { grid-template-columns: 1fr; } }

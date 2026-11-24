@@ -1,18 +1,41 @@
 //! Menus natifs : structure en données (testable), convertie en menus Tauri au démarrage.
+//!
+//! Chaque entrée envoie son identifiant à l'interface (`picToneCommand`, js/ui.js), sauf « quit »
+//! et les éléments système. Les raccourcis sont écrits une fois (Ctrl+…) et affichés selon la
+//! plateforme : ⌘ sur macOS, Ctrl+ sous Windows. Le clavier est géré par l'interface.
 
 use std::collections::HashMap;
 use std::sync::Mutex;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Wry};
 
-/// Raccourci affiché selon la plateforme : ⌘S sur macOS, Ctrl+S ailleurs.
-pub fn kbd(key: &str) -> String {
-    if cfg!(target_os = "macos") { format!("⌘{key}") } else { format!("Ctrl+{key}") }
+/// Libellé de raccourci pour la plateforme : « Ctrl+Shift+E » devient « ⇧⌘E » sur macOS.
+pub fn shortcut_label(canonical: &str) -> String {
+    if !cfg!(target_os = "macos") {
+        return canonical.to_string();
+    }
+    // Ordre des modificateurs sur macOS : ⌥ ⇧ ⌘, puis la touche.
+    let (mut alt, mut shift, mut cmd_key, mut key) = (false, false, false, String::new());
+    for part in canonical.split('+') {
+        match part {
+            "Ctrl" => cmd_key = true,
+            "Shift" => shift = true,
+            "Alt" => alt = true,
+            other => key = other.to_string(),
+        }
+    }
+    let mut out = String::new();
+    if alt { out.push('⌥'); }
+    if shift { out.push('⇧'); }
+    if cmd_key { out.push('⌘'); }
+    out.push_str(&key);
+    out
 }
 
 pub struct Entry {
     pub id: &'static str,
     pub label: &'static str,
+    /// Raccourci « Ctrl+… » (libellé seulement : le clavier est géré par l'interface).
     pub shortcut: Option<&'static str>,
 }
 
@@ -30,33 +53,59 @@ fn cmd(id: &'static str, label: &'static str, shortcut: Option<&'static str>) ->
     Item::Command(Entry { id, label, shortcut })
 }
 
-/// Commandes pilotant l'interface (ids = noms de picToneCommand dans app.js).
+/// Structure des menus de PicTone (ids = noms reconnus par picToneCommand).
 pub fn spec() -> Vec<MenuSpec> {
     vec![
         MenuSpec { title: "Fichier", items: vec![
-            cmd("open", "Ouvrir une image…", Some("O")),
-            cmd("save", "Enregistrer l'image…", Some("S")),
-            cmd("reset", "Réinitialiser", None),
+            cmd("open", "Ouvrir…", Some("Ctrl+O")),
+            cmd("save", "Enregistrer le projet…", Some("Ctrl+S")),
+            cmd("export", "Exporter l'image…", Some("Ctrl+Shift+E")),
+            Item::Separator,
+            cmd("close", "Fermer l'image", None),
         ]},
         MenuSpec { title: "Édition", items: vec![
-            cmd("undo", "Annuler", Some("Z")),
-            cmd("redo", "Rétablir", Some("Y")),
+            cmd("undo", "Annuler", Some("Ctrl+Z")),
+            cmd("redo", "Rétablir", Some("Ctrl+Shift+Z")),
             Item::Separator,
-            cmd("cut", "Couper", Some("X")),
-            cmd("copy", "Copier", Some("C")),
-            cmd("paste", "Coller", Some("V")),
-            cmd("selectAll", "Tout sélectionner", Some("A")),
+            cmd("cut", "Couper", Some("Ctrl+X")),
+            cmd("copy", "Copier", Some("Ctrl+C")),
+            cmd("paste", "Coller", Some("Ctrl+V")),
+            cmd("selectAll", "Tout sélectionner", Some("Ctrl+A")),
+        ]},
+        MenuSpec { title: "Image", items: vec![
+            cmd("cropStart", "Recadrer…", None),
+            cmd("resize", "Redimensionner…", None),
+            Item::Separator,
+            cmd("flipH", "Retourner horizontalement", None),
+            cmd("flipV", "Retourner verticalement", None),
+            Item::Separator,
+            cmd("flatten", "Aplatir les calques", None),
+        ]},
+        MenuSpec { title: "Calque", items: vec![
+            cmd("newLayer", "Nouveau calque", Some("Ctrl+Shift+N")),
+            cmd("duplicateLayer", "Dupliquer le calque", Some("Ctrl+J")),
+            cmd("deleteLayer", "Supprimer le calque", None),
+            Item::Separator,
+            cmd("moveLayerUp", "Monter", Some("Ctrl+]")),
+            cmd("moveLayerDown", "Descendre", Some("Ctrl+[")),
+            cmd("mergeDown", "Fusionner avec le calque du dessous", Some("Ctrl+E")),
         ]},
         MenuSpec { title: "Affichage", items: vec![
-            cmd("zoomIn", "Zoom avant", Some("+")),
-            cmd("zoomOut", "Zoom arrière", Some("-")),
-            cmd("zoomReset", "Taille réelle", Some("0")),
+            cmd("zoomIn", "Zoom avant", Some("Ctrl++")),
+            cmd("zoomOut", "Zoom arrière", Some("Ctrl+-")),
+            cmd("zoomFit", "Ajuster à la fenêtre", Some("Ctrl+0")),
+            cmd("zoomActual", "Taille réelle", Some("Ctrl+1")),
             Item::Separator,
-            cmd("panelFilters", "Panneau Filtres", None),
-            cmd("panelDraw", "Panneau Dessin", None),
-            cmd("panelTransform", "Panneau Transformer", None),
+            cmd("toggleSplit", "Avant / Après", Some("Ctrl+\\")),
+            Item::Separator,
+            cmd("tabFilters", "Panneau Filtres", None),
+            cmd("tabLayers", "Panneau Calques", None),
+            cmd("tabDraw", "Panneau Dessin", None),
+            cmd("tabTransform", "Panneau Transformer", None),
         ]},
         MenuSpec { title: "Aide", items: vec![
+            cmd("shortcuts", "Raccourcis clavier", Some("Ctrl+/")),
+            Item::Separator,
             cmd("checkUpdates", "Vérifier les mises à jour", None),
             cmd("about", "À propos de PicTone", None),
         ]},
@@ -65,7 +114,7 @@ pub fn spec() -> Vec<MenuSpec> {
 
 fn label_of(e: &Entry) -> String {
     match e.shortcut {
-        Some(k) => format!("{}  ({})", e.label, kbd(k)),
+        Some(k) => format!("{}  ({})", e.label, shortcut_label(k)),
         None => e.label.to_string(),
     }
 }
@@ -108,6 +157,11 @@ pub fn build(app: &AppHandle) -> tauri::Result<(Menu<Wry>, HashMap<String, MenuI
                 }
             }
         }
+        // Windows : « Quitter » dans le menu Fichier (sous macOS, il est dans le menu PicTone).
+        if m.title == "Fichier" && cfg!(not(target_os = "macos")) {
+            sub.append(&PredefinedMenuItem::separator(app)?)?;
+            sub.append(&MenuItem::with_id(app, "quit", "Quitter", true, Some("Ctrl+Q"))?)?;
+        }
         menu.append(&sub)?;
     }
     Ok((menu, items))
@@ -131,21 +185,36 @@ mod tests {
 
     #[test]
     fn le_libelle_porte_le_raccourci() {
-        let e = Entry { id: "undo", label: "Annuler", shortcut: Some("Z") };
-        let l = label_of(&e);
-        assert!(l.starts_with("Annuler  (") && l.ends_with("Z)"), "{l}");
-        assert_eq!(label_of(&Entry { id: "reset", label: "Réinitialiser", shortcut: None }), "Réinitialiser");
+        let l = label_of(&Entry { id: "undo", label: "Annuler", shortcut: Some("Ctrl+Z") });
+        assert!(l.starts_with("Annuler  (") && l.ends_with(")"), "{l}");
+        assert_eq!(label_of(&Entry { id: "close", label: "Fermer", shortcut: None }), "Fermer");
     }
 
-    /// Chaque commande du menu doit être gérée par picToneCommand dans l'interface.
     #[test]
-    fn toutes_les_commandes_existent_dans_app_js() {
-        let js = include_str!("../../web/app.js");
+    fn le_raccourci_suit_la_plateforme() {
+        let win = shortcut_label("Ctrl+Shift+E");
+        if cfg!(target_os = "macos") {
+            assert_eq!(win, "⇧⌘E");
+        } else {
+            assert_eq!(win, "Ctrl+Shift+E");
+        }
+    }
+
+    /// Chaque commande du menu doit être reconnue par l'interface (picToneCommand, js/ui.js).
+    #[test]
+    fn toutes_les_commandes_existent_dans_l_interface() {
+        let js = [
+            include_str!("../../web/js/ui.js"),
+            include_str!("../../web/js/io.js"),
+            include_str!("../../web/js/view.js"),
+            include_str!("../../web/js/model.js"),
+        ]
+        .join("\n");
         for m in spec() {
             for it in m.items {
                 if let Item::Command(e) = it {
-                    assert!(js.contains(&format!("'{}'", e.id)) || js.contains(&format!("\"{}\"", e.id)),
-                        "commande absente d'app.js : {}", e.id);
+                    if e.id == "about" || e.id == "checkUpdates" { continue; } // traitées par l'interface (updater.js)
+                    assert!(js.contains(&format!("'{}'", e.id)), "commande absente de l'interface : {}", e.id);
                 }
             }
         }
