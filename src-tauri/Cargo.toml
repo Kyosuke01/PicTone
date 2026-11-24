@@ -20,6 +20,7 @@ ureq = { version = "2", features = ["json"] }
 sha2 = "0.10"
 base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
+tauri-plugin-clipboard-manager = "2"
 
 [profile.release]
 opt-level = "s"
