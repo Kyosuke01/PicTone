@@ -12,7 +12,8 @@
             install_update: () => call('install_update'),
             set_command_states: (states) => call('set_command_states', { states }),
             log_js: (message) => call('log_js', { message: String(message) }),
-            save_file: (dataUrl, filename, saveAs) => call('save_file', { dataUrl, filename, saveAs: !!saveAs }),
+            save_file: (dataUrl, filename) => call('save_file', { dataUrl, filename }),
+            read_clipboard_image: () => call('read_clipboard_image'),
             quit_app: () => call('quit_app'),
         },
     };

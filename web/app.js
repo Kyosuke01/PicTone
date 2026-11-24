@@ -287,6 +287,11 @@ window.addEventListener('paste', (e) => {
 // Recadrage, retournement et redimensionnement fusionnent d'abord les calques dans l'image de base.
 // ---------------------------------------------------------------------------
 
+// Touche de raccourci affichée : ⌘ sur macOS, Ctrl ailleurs.
+function shortcutKey() {
+    return /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘' : 'Ctrl+';
+}
+
 let imageLayers = [];        // { id, name, img, x, y, w, h, opacity (0-1), visible }
 let selectedLayerId = null;
 let layerSeq = 0;
@@ -394,7 +399,7 @@ function renderImageLayersPanel() {
     if (!imageLayers.length) {
         const empty = document.createElement('p');
         empty.className = 'image-layers-empty';
-        empty.textContent = 'Aucun calque. Collez une image (⌘V) ou ajoutez-en une avec le bouton +.';
+        empty.textContent = `Aucun calque. Collez une image (${shortcutKey()}V) ou ajoutez-en une avec le bouton +.`;
         imageLayersList.appendChild(empty);
     }
     // Du calque le plus haut au plus bas
@@ -2712,6 +2717,7 @@ function updateControlStates() {
         zoomReset: hasImage,
         cut: hasImage,
         copy: hasImage,
+        paste: true,
         selectAll: hasImage,
         panelFilters: true,
         panelDraw: true,
@@ -2843,10 +2849,10 @@ async function saveImage(saveAs) {
     const filename = `${originalFileName}${suffix}.${ext}`;
     const dataUrl = exportCanvas.toDataURL(mimeType, exportFormat === 'png' ? 1.0 : exportQuality);
 
-    // Application : boîte native (ou réécriture du dernier fichier). Navigateur : téléchargement.
+    // Application : boîte « Enregistrer sous » native. Navigateur : téléchargement.
     if (window.pywebview && window.pywebview.api && window.pywebview.api.save_file) {
         try {
-            const saved = await window.pywebview.api.save_file(dataUrl, filename, saveAs);
+            const saved = await window.pywebview.api.save_file(dataUrl, filename);
             if (saved) isDirty = false;
             return !!saved;
         } catch (err) {
@@ -3405,6 +3411,50 @@ async function copyImageToClipboard() {
     }
 }
 
+// Coller : une image du presse-papiers devient un calque (ou la base, si aucune image n'est ouverte).
+// Lue côté Rust, car le presse-papiers du navigateur est refusé hors geste direct de l'utilisateur.
+async function pasteFromClipboard() {
+    if (isTextFieldFocused()) {
+        document.execCommand('paste');
+        return;
+    }
+    const api = window.pywebview && window.pywebview.api;
+    if (!api || typeof api.read_clipboard_image !== 'function') return;
+    let image = null;
+    try { image = await api.read_clipboard_image(); } catch (e) { image = null; }
+    if (!image) {
+        showAlert('Coller', 'Aucune image dans le presse-papiers.');
+        return;
+    }
+    const bytes = Uint8ClampedArray.from(atob(image.rgba), (c) => c.charCodeAt(0));
+    const canvas = document.createElement('canvas');
+    canvas.width = image.width;
+    canvas.height = image.height;
+    canvas.getContext('2d').putImageData(new ImageData(bytes, image.width, image.height), 0, 0);
+    canvas.toBlob((blob) => {
+        if (!blob) return;
+        if (originalImage) {
+            addImageLayerFromBlob(blob, 'Calque collé');
+        } else {
+            originalFileName = 'image-collee';
+            handleFile(blob);
+        }
+    }, 'image/png');
+}
+
+// Raccourcis ⌘/Ctrl + C, X, V (hors champ de saisie) : image copiée ou collée.
+window.addEventListener('keydown', (e) => {
+    if (!(e.ctrlKey || e.metaKey) || e.altKey || isTextFieldFocused()) return;
+    const key = e.key.toLowerCase();
+    if ((key === 'c' || key === 'x') && originalImage) {
+        e.preventDefault();
+        copyImageToClipboard();
+    } else if (key === 'v') {
+        e.preventDefault();
+        pasteFromClipboard();
+    }
+});
+
 // « À propos » : fenêtre intégrée (alert() ne s'affiche pas dans la fenêtre native).
 async function showAboutDialog() {
     let version = '';
@@ -3425,7 +3475,7 @@ window.picToneCommand = (cmd) => {
     };
     switch (cmd) {
         case 'open':        fileInput.click(); break;
-        case 'save':        saveImage(false); break;
+        case 'save':        saveImage(true); break;
         case 'reset':       click('btn-reset'); break;
         case 'undo':        click('btn-undo'); break;
         case 'redo':        click('btn-redo'); break;
@@ -3439,6 +3489,7 @@ window.picToneCommand = (cmd) => {
         case 'about':          showAboutDialog(); break;
         case 'cut':
         case 'copy':        editCopyOrCut(cmd); break;
+        case 'paste':       pasteFromClipboard(); break;
         case 'selectAll':   editSelectAll(); break;
         default: updLog(`commande de menu inconnue : ${cmd}`);
     }

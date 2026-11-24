@@ -42,9 +42,10 @@ pub fn spec() -> Vec<MenuSpec> {
             cmd("undo", "Annuler", Some("Z")),
             cmd("redo", "Rétablir", Some("Y")),
             Item::Separator,
-            cmd("cut", "Couper", None),
-            cmd("copy", "Copier", None),
-            cmd("selectAll", "Tout sélectionner", None),
+            cmd("cut", "Couper", Some("X")),
+            cmd("copy", "Copier", Some("C")),
+            cmd("paste", "Coller", Some("V")),
+            cmd("selectAll", "Tout sélectionner", Some("A")),
         ]},
         MenuSpec { title: "Affichage", items: vec![
             cmd("zoomIn", "Zoom avant", Some("+")),
@@ -79,6 +80,8 @@ pub fn build(app: &AppHandle) -> tauri::Result<(Menu<Wry>, HashMap<String, MenuI
 
     #[cfg(target_os = "macos")]
     {
+        // « Quitter » est un élément à nous : ⌘Q passe ainsi par la confirmation d'enregistrement.
+        let quit = MenuItem::with_id(app, "quit", "Quitter PicTone", true, Some("Cmd+Q"))?;
         let app_menu = Submenu::with_items(app, "PicTone", true, &[
             &PredefinedMenuItem::about(app, Some("À propos de PicTone"), None)?,
             &PredefinedMenuItem::separator(app)?,
@@ -88,7 +91,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<(Menu<Wry>, HashMap<String, MenuI
             &PredefinedMenuItem::hide_others(app, Some("Masquer les autres"))?,
             &PredefinedMenuItem::show_all(app, Some("Tout afficher"))?,
             &PredefinedMenuItem::separator(app)?,
-            &PredefinedMenuItem::quit(app, Some("Quitter PicTone"))?,
+            &quit,
         ])?;
         menu.append(&app_menu)?;
     }
@@ -104,11 +107,6 @@ pub fn build(app: &AppHandle) -> tauri::Result<(Menu<Wry>, HashMap<String, MenuI
                     items.insert(e.id.to_string(), item);
                 }
             }
-        }
-        // Coller reste un élément natif : toujours actif, même sans image (il sert à importer).
-        if m.title == "Édition" {
-            sub.append(&PredefinedMenuItem::separator(app)?)?;
-            sub.append(&PredefinedMenuItem::paste(app, Some("Coller"))?)?;
         }
         menu.append(&sub)?;
     }
