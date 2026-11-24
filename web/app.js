@@ -2471,6 +2471,9 @@ function updateControlStates() {
         zoomIn: hasImage,
         zoomOut: hasImage,
         zoomReset: hasImage,
+        cut: hasImage,
+        copy: hasImage,
+        selectAll: hasImage,
         panelFilters: true,
         panelDraw: true,
         panelTransform: true,
@@ -2532,13 +2535,11 @@ bindSliderAndInput(exportQualitySlider, inputExportQuality, (val) => {
     exportQuality = val / 100;
 });
 
-btnSave.addEventListener('click', () => {
-    if (!originalImage) return;
-
+// Rendu final de l'image (filtres, dessin, rotation) à la taille d'origine.
+function renderExportCanvas() {
     const w = originalImage.naturalWidth  || originalImage.width;
     const h = originalImage.naturalHeight || originalImage.height;
-
-    // 1. Create a temporary canvas at original image size to apply filters and drawings
+    // Canvas temporaire à la taille d'origine : filtres puis dessin
     const tempCanvas = document.createElement('canvas');
     tempCanvas.width = w;
     tempCanvas.height = h;
@@ -2580,7 +2581,15 @@ btnSave.addEventListener('click', () => {
         ctx.drawImage(tempCanvas, 0, 0);
     }
 
-    // 3. Build filename
+    return exportCanvas;
+}
+
+btnSave.addEventListener('click', () => {
+    if (!originalImage) return;
+
+    const exportCanvas = renderExportCanvas();
+
+    // Build filename
     const activeFiltersList = Array.from(activeFilters).filter(f => f !== 'Aucun');
     const formatSuffix = activeFiltersList.length > 0 
         ? activeFiltersList.join('_').toLowerCase().replace(/\s/g, '_')
@@ -3041,6 +3050,37 @@ function applyPlatformShortcuts() {
 }
 applyPlatformShortcuts();
 
+// Couper / Copier / Tout sélectionner : dans un champ de saisie, commande d'édition native ;
+// sinon (image), Copier et Couper placent l'image rendue dans le presse-papiers.
+function isTextFieldFocused() {
+    const el = document.activeElement;
+    return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA');
+}
+
+function editCopyOrCut(cmd) {
+    if (isTextFieldFocused()) {
+        document.execCommand(cmd);
+        return;
+    }
+    if (originalImage) copyImageToClipboard();
+}
+
+function editSelectAll() {
+    if (isTextFieldFocused()) document.activeElement.select();
+}
+
+async function copyImageToClipboard() {
+    try {
+        const blob = await new Promise((resolve) => renderExportCanvas().toBlob(resolve, 'image/png'));
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+        updLog("image copiée dans le presse-papiers");
+    } catch (e) {
+        const message = e && e.message ? e.message : String(e);
+        updLog(`ÉCHEC de la copie : ${message}`);
+        showAlert('Copier', `Impossible de copier l'image : ${message}`);
+    }
+}
+
 // « À propos » : fenêtre intégrée (alert() ne s'affiche pas dans la fenêtre native).
 async function showAboutDialog() {
     let version = '';
@@ -3073,6 +3113,9 @@ window.picToneCommand = (cmd) => {
         case 'panelTransform': click('stab-transform'); break;
         case 'checkUpdates':   checkUpdatesWithReport(); break;
         case 'about':          showAboutDialog(); break;
+        case 'cut':
+        case 'copy':        editCopyOrCut(cmd); break;
+        case 'selectAll':   editSelectAll(); break;
         default: updLog(`commande de menu inconnue : ${cmd}`);
     }
     updLog(`commande de menu : ${cmd}`);
