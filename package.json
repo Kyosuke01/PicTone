@@ -1,7 +1,7 @@
 {
   "name": "pictone",
   "private": true,
-  "version": "1.0.3",
+  "version": "1.2.0",
   "scripts": {
     "tauri": "tauri"
   },

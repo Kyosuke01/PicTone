@@ -4,78 +4,66 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>PicTone — Éditeur d'images</title>
-    <meta name="description" content="PicTone est un éditeur d'images local et performant pour Windows et macOS, offrant filtres, dessin, recadrage et export multi-formats.">
-    <!-- Favicon -->
+    <meta name="description" content="PicTone est un éditeur d'images local avec calques, filtres, dessin et export, pour macOS et Windows.">
     <link rel="icon" type="image/x-icon" href="favicon.ico">
     <link rel="stylesheet" href="style.css">
     <script src="tauri-shim.js"></script>
-    <script src="app.js" defer></script>
+    <script src="js/engine.js" defer></script>
+    <script src="js/model.js" defer></script>
+    <script src="js/view.js" defer></script>
+    <script src="js/io.js" defer></script>
+    <script src="js/updater.js" defer></script>
+    <script src="js/ui.js" defer></script>
 </head>
 <body>
     <div class="app-body">
-        <!-- Main Workspace -->
-        <main class="workspace" id="app-workspace">
-            <!-- Empty State -->
+        <!-- Espace de travail -->
+        <main class="workspace" id="workspace">
+            <!-- Aucun document : zone d'accueil -->
             <div id="empty-state" class="empty-state">
-                <input type="file" id="file-input" accept="image/png, image/jpeg, image/jpg, image/bmp, image/webp, image/gif">
+                <input type="file" id="file-input" accept="image/png, image/jpeg, image/jpg, image/bmp, image/webp, image/gif, .pictone">
                 <div id="drop-zone" class="drop-zone">
                     <div class="drop-zone-content">
                         <svg class="upload-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
                         </svg>
-                        <h1>Importer une image</h1>
-                        <p>Glissez une image ici, ou <span class="link-like">parcourez vos fichiers</span></p>
-                        <span class="format-info">PNG · JPEG · BMP · WebP · GIF</span>
+                        <h1>Ouvrir une image ou un projet</h1>
+                        <p>Glissez un fichier ici, ou <span class="link-like">parcourez vos fichiers</span></p>
+                        <span class="format-info">PNG · JPEG · BMP · WebP · GIF · projet .pictone</span>
                         <span class="format-hint">Astuce : collez une image avec Ctrl+V</span>
                     </div>
                 </div>
             </div>
 
-            <!-- Active Viewer -->
-            <div id="image-viewer" class="image-viewer hidden">
+            <!-- Éditeur -->
+            <div id="editor" class="editor hidden">
                 <div class="viewer-toolbar">
                     <div class="viewer-tabs">
-                        <button id="tab-edit" class="tab-btn active">Édition</button>
-                        <button id="tab-split" class="tab-btn">Avant / Après</button>
+                        <button id="tab-edit" class="tab-btn active" title="Afficher l'image modifiée">Édition</button>
+                        <button id="tab-split" class="tab-btn" title="Comparer avec l'original">Avant / Après</button>
                     </div>
-                    <div class="toolbar-group" id="history-toolbar">
-                        <button id="btn-undo" class="toolbar-btn" title="Annuler le dessin ou la transformation (Ctrl+Z)" disabled>
+                    <div class="toolbar-group">
+                        <button id="btn-undo" class="toolbar-btn" title="Annuler (Ctrl+Z)" aria-label="Annuler" disabled>
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h10a5 5 0 010 10H9m-6-10l4-4M3 10l4 4"/></svg>
                         </button>
-                        <button id="btn-redo" class="toolbar-btn" title="Rétablir le dessin ou la transformation (Ctrl+Y)" disabled>
+                        <button id="btn-redo" class="toolbar-btn" title="Rétablir (Ctrl+Maj+Z)" aria-label="Rétablir" disabled>
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 10H11a5 5 0 000 10h4m6-10l-4-4m4 4l-4 4"/></svg>
                         </button>
                     </div>
-                </div>
-
-                <!-- Mode 1: Édition (Simple Canvas View) -->
-                <div id="view-edit" class="view-container edit-view-container">
-                    <div class="image-edit-wrapper" id="image-edit-wrapper" style="position: relative; display: inline-block;">
-                        <!-- Image invisible de référence pour dimensionner le wrapper -->
-                        <img id="img-reference-edit" class="image-layer" src="" alt="Base" style="opacity: 0; pointer-events: none; display: block;">
-                        <canvas id="canvas-filtered-edit" class="image-layer" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;"></canvas>
-                        <!-- Drawing overlay — Edit view -->
-                        <canvas id="draw-canvas-edit" class="draw-canvas"></canvas>
-                    </div>
-                    <!-- Custom Scrollbars -->
-                    <div class="custom-scrollbar custom-scrollbar-h hidden">
-                        <div class="custom-scrollbar-thumb"></div>
-                    </div>
-                    <div class="custom-scrollbar custom-scrollbar-v hidden">
-                        <div class="custom-scrollbar-thumb"></div>
+                    <div class="toolbar-group zoom-group">
+                        <button id="btn-zoom-out" class="toolbar-btn" title="Zoom arrière (Ctrl+-)" aria-label="Zoom arrière">−</button>
+                        <span id="zoom-label" class="zoom-label">100 %</span>
+                        <button id="btn-zoom-in" class="toolbar-btn" title="Zoom avant (Ctrl++)" aria-label="Zoom avant">+</button>
+                        <button id="btn-zoom-fit" class="tab-btn" title="Ajuster à la fenêtre (Ctrl+0)">Ajuster</button>
+                        <button id="btn-zoom-actual" class="tab-btn" title="Taille réelle (Ctrl+1)">1:1</button>
                     </div>
                 </div>
 
-                <!-- Mode 2: Split Slider (Comparateur) -->
-                <div id="view-split" class="view-container split-view-container hidden">
-                    <div class="comparison-slider" id="comparison-slider">
-                        <img id="img-original-split" class="image-layer original-layer" src="" alt="Original">
-                        <div class="filtered-wrapper" id="filtered-wrapper">
-                            <canvas id="canvas-filtered-split" class="image-layer filtered-layer"></canvas>
-                            <!-- Drawing overlay — Split view -->
-                            <canvas id="draw-canvas-split" class="draw-canvas"></canvas>
-                        </div>
-                        <div class="slider-handle" id="slider-handle">
+                <div id="viewport" class="viewport">
+                    <div id="stage-wrap" class="stage-wrap">
+                        <canvas id="stage-canvas" class="stage-canvas"></canvas>
+                        <canvas id="stage-before" class="stage-canvas stage-before hidden"></canvas>
+                        <div id="compare-handle" class="slider-handle hidden">
                             <div class="handle-line"></div>
                             <div class="handle-button">
                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -84,89 +72,71 @@
                             </div>
                             <div class="handle-line"></div>
                         </div>
-                    </div>
-                    <!-- Custom Scrollbars -->
-                    <div class="custom-scrollbar custom-scrollbar-h hidden">
-                        <div class="custom-scrollbar-thumb"></div>
-                    </div>
-                    <div class="custom-scrollbar custom-scrollbar-v hidden">
-                        <div class="custom-scrollbar-thumb"></div>
-                    </div>
-                </div>
-
-                <!-- Crop Overlay (hidden by default) -->
-                <div id="crop-overlay" class="crop-overlay hidden">
-                    <div id="crop-selection" class="crop-selection">
-                        <div class="crop-edge crop-edge-n" data-pos="n"></div>
-                        <div class="crop-edge crop-edge-s" data-pos="s"></div>
-                        <div class="crop-edge crop-edge-e" data-pos="e"></div>
-                        <div class="crop-edge crop-edge-w" data-pos="w"></div>
-                        <div class="crop-handle crop-handle-nw" data-pos="nw"></div>
-                        <div class="crop-handle crop-handle-ne" data-pos="ne"></div>
-                        <div class="crop-handle crop-handle-sw" data-pos="sw"></div>
-                        <div class="crop-handle crop-handle-se" data-pos="se"></div>
-                        <div class="crop-grid"></div>
-                    </div>
-                    <div class="crop-toolbar">
-                        <button id="btn-crop-apply" class="btn btn-primary btn-small">✓ Recadrer</button>
-                        <button id="btn-crop-cancel" class="btn btn-secondary btn-small">✕ Annuler</button>
-                    </div>
-                </div>
-
-                <!-- Calques d'image (collés ou ajoutés par-dessus l'image de base) -->
-                <div id="image-layers-panel" class="image-layers-panel hidden">
-                    <div class="panel-header">
-                        <span>Calques d'image</span>
-                        <button id="btn-add-layer" class="panel-add-btn" type="button" title="Ajouter un calque (ou collez avec Ctrl+V)">+</button>
-                    </div>
-                    <div id="image-layers-list" class="image-layers-list"></div>
-                    <div id="image-layer-props" class="image-layer-props hidden">
-                        <label class="layer-prop">X <input type="number" id="layer-x" class="val-input"></label>
-                        <label class="layer-prop">Y <input type="number" id="layer-y" class="val-input"></label>
-                    </div>
-                </div>
-
-                <!-- Panneau des Couches de filtres Flottant -->
-                <div id="filter-layers-panel" class="filter-layers-panel hidden">
-                    <div class="panel-header">
-                        <span>Couches</span>
-                        <button id="btn-toggle-layers-panel" class="panel-toggle-btn" title="Réduire">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
-                        </button>
-                    </div>
-                    <div id="filter-layers-body" class="panel-body-content">
-                        <div id="filter-layers-list" class="filter-layers-list">
+                        <!-- Recadrage -->
+                        <div id="crop-overlay" class="crop-overlay hidden">
+                            <div id="crop-selection" class="crop-selection">
+                                <div class="crop-edge crop-edge-n" data-pos="n"></div>
+                                <div class="crop-edge crop-edge-s" data-pos="s"></div>
+                                <div class="crop-edge crop-edge-e" data-pos="e"></div>
+                                <div class="crop-edge crop-edge-w" data-pos="w"></div>
+                                <div class="crop-handle crop-handle-nw" data-pos="nw"></div>
+                                <div class="crop-handle crop-handle-ne" data-pos="ne"></div>
+                                <div class="crop-handle crop-handle-sw" data-pos="sw"></div>
+                                <div class="crop-handle crop-handle-se" data-pos="se"></div>
+                                <div class="crop-grid"></div>
+                            </div>
                         </div>
                     </div>
                 </div>
+
+                <div id="crop-toolbar" class="crop-toolbar hidden">
+                    <button id="btn-crop-apply" class="btn btn-primary btn-small">✓ Recadrer</button>
+                    <button id="btn-crop-cancel" class="btn btn-secondary btn-small">✕ Annuler</button>
+                </div>
+                <div id="brush-cursor" class="brush-preview-cursor"></div>
             </div>
         </main>
 
-        <!-- Sidebar -->
+        <!-- Barre latérale -->
         <aside class="sidebar">
-            <!-- Fichier : nom + dimensions, remplacement discret -->
             <div class="sidebar-section file-header">
                 <div class="file-info-box">
-                    <span id="file-name-text" class="info-value" title="Nom du fichier">-</span>
-                    <span id="file-size-text" class="info-meta" title="Dimensions">-</span>
+                    <span id="file-name-text" class="info-value" title="Nom du document">-</span>
+                    <span id="file-size-text" class="info-meta">-</span>
                 </div>
-                <button id="btn-change-image" class="btn btn-ghost btn-small" style="display: none;" title="Remplacer l'image">
-                    Changer
+                <button id="btn-open" class="btn btn-ghost btn-small" title="Ouvrir une image ou un projet (Ctrl+O)">Ouvrir</button>
+            </div>
+
+            <div class="sidebar-tabs">
+                <button class="sidebar-tab active" data-panel="panel-filters" id="stab-filters">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="9" r="5.5"/><circle cx="15" cy="15" r="5.5"/></svg>
+                    <span>Filtres</span>
+                </button>
+                <button class="sidebar-tab" data-panel="panel-layers" id="stab-layers">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg>
+                    <span>Calques</span>
+                </button>
+                <button class="sidebar-tab" data-panel="panel-draw" id="stab-draw">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15.2 5.2l3.6 3.6M16.7 3.7a2.5 2.5 0 113.6 3.6L6.5 21H3v-3.6L16.7 3.7z"/></svg>
+                    <span>Dessin</span>
+                </button>
+                <button class="sidebar-tab" data-panel="panel-transform" id="stab-transform">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2v14a2 2 0 002 2h14M2 6h14a2 2 0 012 2v14"/></svg>
+                    <span>Transformer</span>
                 </button>
             </div>
 
-            <!-- Sidebar Tab Switcher -->
-            <div class="sidebar-tabs">
-                <button class="sidebar-tab active" data-panel="panel-filters" id="stab-filters"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="9" r="5.5"/><circle cx="15" cy="15" r="5.5"/></svg><span>Filtres</span></button>
-                <button class="sidebar-tab" data-panel="panel-draw" id="stab-draw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15.2 5.2l3.6 3.6M16.7 3.7a2.5 2.5 0 113.6 3.6L6.5 21H3v-3.6L16.7 3.7z"/></svg><span>Dessin</span></button>
-                <button class="sidebar-tab" data-panel="panel-transform" id="stab-transform"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2v14a2 2 0 002 2h14M2 6h14a2 2 0 012 2v14"/></svg><span>Transformer</span></button>
-            </div>
+            <!-- Filtres et réglages -->
+            <div id="panel-filters" class="sidebar-panel scrollable-section active">
+                <div class="target-switch" role="group" aria-label="Cible des réglages">
+                    <button id="btn-target-image" class="target-btn active" type="button">Image entière</button>
+                    <button id="btn-target-layer" class="target-btn" type="button">Calque actif</button>
+                </div>
+                <p id="target-hint" class="target-hint"></p>
 
-            <!-- Panel: Filters -->
-            <div id="panel-filters" class="sidebar-panel active scrollable-section">
-                <div id="controls-section" class="controls-section disabled">
+                <div id="filters-controls" class="controls-section">
                     <div class="filters-list">
-                        <button class="filter-item active" data-filter="Aucun"><canvas class="filter-thumb" aria-hidden="true"></canvas><span class="filter-name">Aucun</span></button>
+                        <button class="filter-item" data-filter="Aucun"><canvas class="filter-thumb" aria-hidden="true"></canvas><span class="filter-name">Aucun</span></button>
                         <button class="filter-item" data-filter="Noir & Blanc"><canvas class="filter-thumb" aria-hidden="true"></canvas><span class="filter-name">Noir &amp; Blanc</span></button>
                         <button class="filter-item" data-filter="Sépia"><canvas class="filter-thumb" aria-hidden="true"></canvas><span class="filter-name">Sépia</span></button>
                         <button class="filter-item" data-filter="Flou"><canvas class="filter-thumb" aria-hidden="true"></canvas><span class="filter-name">Flou</span></button>
@@ -195,16 +165,14 @@
 
                     <div id="slider-opacity-container" class="slider-group hidden">
                         <div class="slider-header">
-                            <label for="slider-opacity">Opacité</label>
+                            <label for="slider-opacity">Opacité du filtre</label>
                             <div class="input-unit-wrapper">
-                                <input type="number" id="input-opacity" class="val-input" min="0" max="100" step="1" value="100">
-                                <span class="input-unit">%</span>
+                                <input type="number" id="input-opacity" class="val-input" min="0" max="255" step="1" value="255">
                             </div>
                         </div>
                         <input type="range" id="slider-opacity" min="0" max="255" step="1" value="255">
                     </div>
 
-                    <!-- Réglages -->
                     <div class="adjustments-section">
                         <div class="section-subtitle">Réglages</div>
                         <div class="slider-group">
@@ -232,24 +200,56 @@
                 </div>
             </div>
 
-            <!-- Panel: Draw -->
+            <!-- Calques -->
+            <div id="panel-layers" class="sidebar-panel scrollable-section">
+                <div id="layers-controls" class="controls-section">
+                    <div class="layers-toolbar">
+                        <button id="btn-layer-add" class="icon-btn" title="Nouveau calque (Ctrl+Maj+N)" aria-label="Nouveau calque">+</button>
+                        <button id="btn-add-layer" class="icon-btn" title="Ajouter une image comme calque" aria-label="Ajouter une image comme calque">⤒</button>
+                        <button id="btn-layer-dup" class="icon-btn" title="Dupliquer le calque (Ctrl+J)" aria-label="Dupliquer le calque">⧉</button>
+                        <button id="btn-layer-del" class="icon-btn" title="Supprimer le calque" aria-label="Supprimer le calque">🗑</button>
+                        <span class="layers-sep"></span>
+                        <button id="btn-layer-up" class="icon-btn" title="Monter (Ctrl+])" aria-label="Monter le calque">↑</button>
+                        <button id="btn-layer-down" class="icon-btn" title="Descendre (Ctrl+[)" aria-label="Descendre le calque">↓</button>
+                        <button id="btn-layer-merge" class="icon-btn" title="Fusionner avec le calque du dessous (Ctrl+E)" aria-label="Fusionner avec le dessous">⤓</button>
+                    </div>
+                    <div id="layers-list" class="layers-list"></div>
+
+                    <div class="layer-props">
+                        <div class="section-subtitle">Calque actif : <span id="layer-active-name"></span></div>
+                        <div class="slider-group">
+                            <div class="slider-header">
+                                <label for="layer-opacity">Opacité</label>
+                                <div class="input-unit-wrapper">
+                                    <input type="number" id="input-layer-opacity" class="val-input" min="0" max="100" step="1" value="100">
+                                    <span class="input-unit">%</span>
+                                </div>
+                            </div>
+                            <input type="range" id="layer-opacity" min="0" max="100" step="1" value="100">
+                        </div>
+                        <button id="btn-layer-flatten" class="btn btn-secondary btn-small" title="Fusionner les calques visibles">Aplatir les calques</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dessin -->
             <div id="panel-draw" class="sidebar-panel scrollable-section">
-                <div id="draw-controls" class="controls-section disabled">
-                    <div class="section-subtitle">Outil</div>
+                <div id="draw-controls" class="controls-section">
+                    <div class="section-subtitle">Outil (sur le calque actif)</div>
                     <div class="brush-type-group">
-                        <button class="brush-btn active" data-brush="pen" id="brush-pen" title="Stylo fin">
+                        <button class="brush-btn active" data-brush="pen" title="Stylo fin">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
                             <span>Stylo</span>
                         </button>
-                        <button class="brush-btn" data-brush="brush" id="brush-soft" title="Pinceau doux">
+                        <button class="brush-btn" data-brush="brush" title="Pinceau doux">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"/></svg>
                             <span>Pinceau</span>
                         </button>
-                        <button class="brush-btn" data-brush="marker" id="brush-marker" title="Marqueur épais">
+                        <button class="brush-btn" data-brush="marker" title="Marqueur épais">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
                             <span>Marqueur</span>
                         </button>
-                        <button class="brush-btn" data-brush="eraser" id="brush-eraser" title="Gomme">
+                        <button class="brush-btn" data-brush="eraser" title="Gomme (clic droit : gomme rapide)">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20 20H7L3 16l9.586-9.586a2 2 0 012.828 0L20 11l-4 4 2.828 2.828A2 2 0 0120 20z"/></svg>
                             <span>Gomme</span>
                         </button>
@@ -284,7 +284,7 @@
                             <div class="color-presets">
                                 <div class="color-preset" data-color="#ffffff" style="background:#ffffff;" title="Blanc"></div>
                                 <div class="color-preset" data-color="#000000" style="background:#000000;" title="Noir"></div>
-                                <div class="color-preset" data-color="#e74c3c" style="background:#e74c3c;" title="Rouge"></div>
+                                <div class="color-preset active" data-color="#e74c3c" style="background:#e74c3c;" title="Rouge"></div>
                                 <div class="color-preset" data-color="#f39c12" style="background:#f39c12;" title="Orange"></div>
                                 <div class="color-preset" data-color="#2ecc71" style="background:#2ecc71;" title="Vert"></div>
                                 <div class="color-preset" data-color="#3498db" style="background:#3498db;" title="Bleu"></div>
@@ -295,19 +295,18 @@
                     </div>
 
                     <div class="draw-actions">
-                        <button id="btn-clear-draw" class="btn btn-secondary btn-small">Effacer le dessin</button>
+                        <button id="btn-clear-draw" class="btn btn-secondary btn-small">Effacer le calque actif</button>
                     </div>
                 </div>
             </div>
 
-            <!-- Panel: Transform -->
+            <!-- Transformer -->
             <div id="panel-transform" class="sidebar-panel scrollable-section">
-                <div id="transform-controls" class="controls-section disabled">
-
-                    <div class="section-subtitle">Rotation</div>
+                <div id="transform-controls" class="controls-section">
+                    <div class="section-subtitle">Rotation (aperçu)</div>
                     <div class="slider-group">
                         <div class="slider-header">
-                            <label for="slider-rotation">Rotation libre</label>
+                            <label for="slider-rotation">Angle</label>
                             <div class="input-unit-wrapper">
                                 <input type="number" id="input-rotation" class="val-input" min="-180" max="180" step="1" value="0">
                                 <span class="input-unit">°</span>
@@ -318,7 +317,7 @@
                     </div>
 
                     <div class="separator"></div>
-                    <div class="section-subtitle">Retourner</div>
+                    <div class="section-subtitle">Retourner l'image</div>
                     <div class="flip-grid">
                         <button class="transform-btn" id="btn-flip-h" title="Miroir horizontal">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7h12M8 12h12M8 17h12M4 7h.01M4 12h.01M4 17h.01"/></svg>
@@ -332,21 +331,21 @@
 
                     <div class="separator"></div>
                     <div class="section-subtitle">Recadrer</div>
-                    <button id="btn-crop-start" class="btn btn-secondary btn-small">Sélectionner une zone…</button>
+                    <button id="btn-crop-start" class="btn btn-secondary btn-small">Recadrer le document…</button>
 
                     <div class="separator"></div>
                     <div class="section-subtitle">Redimensionner</div>
                     <div class="resize-inputs">
                         <div class="resize-field">
                             <label for="resize-width">Largeur</label>
-                            <input type="number" id="resize-width" class="num-input" min="1" max="9999" placeholder="px">
+                            <input type="number" id="resize-width" class="num-input" min="1" max="20000" placeholder="px">
                         </div>
                         <div class="resize-chain" id="resize-chain" title="Conserver le ratio">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
                         </div>
                         <div class="resize-field">
                             <label for="resize-height">Hauteur</label>
-                            <input type="number" id="resize-height" class="num-input" min="1" max="9999" placeholder="px">
+                            <input type="number" id="resize-height" class="num-input" min="1" max="20000" placeholder="px">
                         </div>
                     </div>
                     <label class="checkbox-label">
@@ -357,15 +356,13 @@
                 </div>
             </div>
 
-            <!-- Footer: Export -->
+            <!-- Export et projet -->
             <div class="sidebar-footer">
                 <div class="export-section">
-                    <div class="export-format-row">
-                        <div class="export-format-group">
-                            <button class="format-btn active" data-fmt="png" id="fmt-png">PNG</button>
-                            <button class="format-btn" data-fmt="jpeg" id="fmt-jpg">JPG</button>
-                            <button class="format-btn" data-fmt="webp" id="fmt-webp">WebP</button>
-                        </div>
+                    <div class="export-format-group">
+                        <button class="format-btn active" data-fmt="png">PNG</button>
+                        <button class="format-btn" data-fmt="jpeg">JPG</button>
+                        <button class="format-btn" data-fmt="webp">WebP</button>
                     </div>
                     <div id="quality-slider-container" class="slider-group hidden">
                         <div class="slider-header">
@@ -378,33 +375,35 @@
                         <input type="range" id="export-quality" min="1" max="100" step="1" value="90">
                     </div>
                 </div>
-                <button id="btn-save" class="btn btn-primary" disabled>
+                <button id="btn-save" class="btn btn-primary" disabled title="Exporter l'image aplatie (Ctrl+Maj+E)">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" class="btn-icon">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
                     </svg>
                     Exporter l'image
                 </button>
-                <button id="btn-reset" class="btn btn-ghost" disabled>Tout réinitialiser</button>
+                <button id="btn-save-project" class="btn btn-secondary" disabled title="Enregistrer le projet avec ses calques (Ctrl+S)">Enregistrer le projet</button>
+                <button id="btn-reset" class="btn btn-ghost" disabled>Fermer l'image</button>
             </div>
         </aside>
     </div>
 
-    <!-- Modal -->
+    <!-- Dialogue générique -->
     <div id="app-modal" class="modal-overlay hidden">
         <div class="modal-container">
             <div class="modal-header">
                 <span id="modal-title">Notification</span>
-                <button id="modal-close" class="modal-close-btn">&times;</button>
+                <button id="modal-close" class="modal-close-btn" aria-label="Fermer">&times;</button>
             </div>
             <div class="modal-body">
                 <p id="modal-message">Message...</p>
             </div>
             <div class="modal-footer">
                 <button id="modal-btn-cancel" class="btn btn-secondary">Annuler</button>
-                <button id="modal-btn-confirm" class="btn btn-primary">Confirmer</button>
+                <button id="modal-btn-confirm" class="btn btn-primary">OK</button>
             </div>
         </div>
     </div>
+
     <!-- Fermeture avec modifications non enregistrées -->
     <div id="quit-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="quit-title">
         <div class="modal-container wide">
@@ -412,7 +411,7 @@
                 <span id="quit-title">Quitter PicTone ?</span>
             </div>
             <div class="modal-body">
-                <p>Votre image contient des modifications qui ne sont pas enregistrées.</p>
+                <p>Votre document contient des modifications qui ne sont pas enregistrées.</p>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" data-quit-choice="cancel">Annuler</button>
@@ -422,12 +421,39 @@
             </div>
         </div>
     </div>
-    <!-- Statut de mise à jour (haut droite) : « Mettre à jour » (orange) ou « À jour » (vert) -->
+
+    <!-- Raccourcis clavier -->
+    <div id="shortcuts-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="shortcuts-title">
+        <div class="modal-container wide">
+            <div class="modal-header">
+                <span id="shortcuts-title">Raccourcis</span>
+                <button id="shortcuts-close" class="modal-close-btn" aria-label="Fermer">&times;</button>
+            </div>
+            <div class="modal-body shortcuts">
+                <div><kbd>Ctrl</kbd>+<kbd>O</kbd> Ouvrir</div>
+                <div><kbd>Ctrl</kbd>+<kbd>S</kbd> Enregistrer le projet</div>
+                <div><kbd>Ctrl</kbd>+<kbd>Maj</kbd>+<kbd>E</kbd> Exporter l'image</div>
+                <div><kbd>Ctrl</kbd>+<kbd>Z</kbd> Annuler</div>
+                <div><kbd>Ctrl</kbd>+<kbd>Maj</kbd>+<kbd>Z</kbd> Rétablir</div>
+                <div><kbd>Ctrl</kbd>+<kbd>C</kbd> / <kbd>X</kbd> / <kbd>V</kbd> Copier, couper, coller</div>
+                <div><kbd>Ctrl</kbd>+<kbd>Maj</kbd>+<kbd>N</kbd> Nouveau calque</div>
+                <div><kbd>Ctrl</kbd>+<kbd>J</kbd> Dupliquer le calque</div>
+                <div><kbd>Ctrl</kbd>+<kbd>E</kbd> Fusionner avec le calque du dessous</div>
+                <div><kbd>Ctrl</kbd>+<kbd>[</kbd> / <kbd>]</kbd> Descendre / monter le calque</div>
+                <div><kbd>Ctrl</kbd>+<kbd>+</kbd> / <kbd>-</kbd> Zoom</div>
+                <div><kbd>Ctrl</kbd>+<kbd>0</kbd> Ajuster · <kbd>Ctrl</kbd>+<kbd>1</kbd> Taille réelle</div>
+                <div><kbd>Ctrl</kbd>+<kbd>\</kbd> Avant / Après</div>
+                <div><kbd>[</kbd> / <kbd>]</kbd> Taille du pinceau</div>
+                <div>Espace + glisser, molette ou deux doigts : déplacer la vue</div>
+                <div>Pincement, ou Ctrl + molette : zoom</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Statut de mise à jour (bas à gauche) : « Mettre à jour » (orange) ou « À jour » (vert) -->
     <button id="update-status" class="update-status" type="button" hidden>
         <span class="update-icon" aria-hidden="true"></span>
         <span class="update-label"></span>
     </button>
-    <!-- Custom Brush/Eraser Preview Cursor -->
-    <div id="brush-preview-cursor" class="brush-preview-cursor"></div>
 </body>
 </html>

@@ -152,7 +152,7 @@ fn quit_app(app: AppHandle) {
     app.exit(0);
 }
 
-/// Envoie une commande de menu à l'interface (picToneCommand, app.js).
+/// Envoie une commande de menu à l'interface (picToneCommand, web/js/ui.js).
 fn send_command(app: &AppHandle, id: &str) {
     if let Some(window) = app.get_webview_window("main") {
         if window.eval(format!("picToneCommand('{id}')")).is_err() {
