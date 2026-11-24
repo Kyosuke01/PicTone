@@ -300,30 +300,86 @@ pub fn can_update_windows() -> bool {
         .unwrap_or(false)
 }
 
-/// Windows : télécharge et vérifie l'installeur, puis lance (après la fermeture de l'app)
-/// une installation silencieuse suivie de la relance de PicTone.
+/// Chemin PowerShell entre guillemets simples (les ' sont doublées).
+#[cfg(windows)]
+fn ps_quote(path: &Path) -> String {
+    format!("'{}'", path.display().to_string().replace('\'', "''"))
+}
+
+/// Script PowerShell : attend la fermeture de PicTone (60 s au plus), lance l'installeur en silencieux,
+/// vérifie son code de sortie, relance PicTone. Toute erreur est journalisée et affichée.
+#[cfg(windows)]
+fn update_script(process_name: &str, setup: &Path, exe: &Path, work: &Path, log: &Path) -> String {
+    format!(
+        r#"$ErrorActionPreference = 'Stop'
+$log = {log}
+function Log($m) {{
+    try {{ Add-Content -LiteralPath $log -Encoding UTF8 -Value ("[{{0}}] script : {{1}}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $m) }} catch {{}}
+}}
+function Fail($m) {{
+    Log $m
+    Add-Type -AssemblyName PresentationFramework
+    [System.Windows.MessageBox]::Show($m, 'PicTone', 'OK', 'Error') | Out-Null
+    exit 1
+}}
+try {{
+    $deadline = (Get-Date).AddSeconds(60)
+    while (Get-Process -Name {process} -ErrorAction SilentlyContinue) {{
+        if ((Get-Date) -gt $deadline) {{
+            Fail "PicTone est toujours ouvert après 60 s : la mise à jour n'a pas été installée. Fermez PicTone, puis relancez-le pour réessayer."
+        }}
+        Start-Sleep -Milliseconds 300
+    }}
+    Log 'PicTone fermé, lancement de l''installeur'
+    $p = Start-Process -Wait -PassThru -FilePath {setup} -ArgumentList '/S'
+    if ($p.ExitCode -ne 0) {{
+        Fail "L'installation de la mise à jour a échoué (code $($p.ExitCode)). Journal : $log"
+    }}
+    Log 'installation réussie, relance de PicTone'
+    Remove-Item -LiteralPath {work} -Recurse -Force -ErrorAction SilentlyContinue
+    Start-Process -FilePath {exe}
+}} catch {{
+    Fail ("Erreur pendant la mise à jour : " + $_.Exception.Message)
+}}
+"#,
+        log = ps_quote(log),
+        process = ps_quote(Path::new(process_name)),
+        setup = ps_quote(setup),
+        work = ps_quote(work),
+        exe = ps_quote(exe),
+    )
+}
+
+/// Windows : télécharge et vérifie l'installeur, puis lance le script de remplacement.
+///
+/// `CREATE_NO_WINDOW` seul : ajouter `DETACHED_PROCESS` ouvrait une fenêtre de terminal.
 #[cfg(windows)]
 pub fn install_windows(update: &UpdateInfo) -> Result<(), String> {
     use std::os::windows::process::CommandExt;
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-    const DETACHED_PROCESS: u32 = 0x0000_0008;
-    const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
 
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let process_name = exe
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .ok_or("Nom de l'application introuvable.")?
+        .to_string();
     let work = std::env::temp_dir().join(format!("PicTone_update_{}", std::process::id()));
     std::fs::create_dir_all(&work).map_err(|e| e.to_string())?;
     let setup = work.join(&update.exe_name);
     download_verified(update, &setup)?;
 
-    // Pause de 3 s (l'app se ferme), installation silencieuse, relance.
-    let line = format!(
-        "ping -n 4 127.0.0.1 >nul & \"{}\" /S & start \"\" \"{}\"",
-        setup.display(),
-        exe.display()
-    );
-    Command::new("cmd")
-        .raw_arg(format!("/C \"{line}\""))
-        .creation_flags(CREATE_NO_WINDOW | DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP)
+    // Script écrit en UTF-8 avec BOM : Windows PowerShell lit sinon les accents de travers.
+    let script_path = work.join("apply_update.ps1");
+    let body = update_script(&process_name, &setup, &exe, &work, &update_log_path());
+    let mut bytes = vec![0xEF, 0xBB, 0xBF];
+    bytes.extend_from_slice(body.as_bytes());
+    std::fs::write(&script_path, bytes).map_err(|e| e.to_string())?;
+
+    Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File"])
+        .arg(&script_path)
+        .creation_flags(CREATE_NO_WINDOW)
         .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null())
         .spawn()
         .map_err(|e| e.to_string())?;

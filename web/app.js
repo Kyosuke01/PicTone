@@ -2785,9 +2785,11 @@ async function installUpdate() {
         }
         setUpdateButton('busy', 'Redémarrage…', 'PicTone va redémarrer');
     } catch (e) {
-        updLog(`ÉCHEC de la mise à jour : ${e && e.message ? e.message : e}`);
+        const message = e && e.message ? e.message : String(e);
+        updLog(`ÉCHEC de la mise à jour : ${message}`);
         updateBusy = false;
-        setUpdateButton('available', 'Réessayer', `Échec : ${e && e.message ? e.message : e}`);
+        setUpdateButton('available', 'Réessayer', `Échec : ${message}`);
+        showAlert('Mise à jour impossible', message);
     }
 }
 
