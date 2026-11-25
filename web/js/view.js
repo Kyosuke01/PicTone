@@ -15,10 +15,9 @@ const zoomLabel      = document.getElementById('zoom-label');
 const cropOverlay    = document.getElementById('crop-overlay');
 const cropSelection  = document.getElementById('crop-selection');
 const cropToolbar    = document.getElementById('crop-toolbar');
-const tabEditBtn     = document.getElementById('tab-edit');
-const tabSplitBtn    = document.getElementById('tab-split');
+const compareBtn     = document.getElementById('btn-compare');
+const compareLabels  = document.getElementById('compare-labels');
 
-const MAX_PREVIEW = 2048;   // taille maximale du rendu à l'écran (au-delà, on réduit)
 let zoom = 1;               // zoom relatif à « ajuster à la fenêtre »
 let panX = 0, panY = 0;     // déplacement en pixels écran
 let rotation = 0;           // rotation d'aperçu (degrés), appliquée à l'export
@@ -44,8 +43,7 @@ function displayScale() {
 
 // Résolution du rendu (canevas) : doc.w réduit si trop grand.
 function previewSize() {
-    const k = Math.min(1, MAX_PREVIEW / Math.max(doc.w, doc.h));
-    return { w: Math.max(1, Math.round(doc.w * k)), h: Math.max(1, Math.round(doc.h * k)) };
+    return previewDims(doc.w, doc.h);
 }
 
 function applyViewTransform() {
@@ -59,7 +57,7 @@ function applyViewTransform() {
         c.style.width = `${w}px`;
         c.style.height = `${h}px`;
     }
-    zoomLabel.textContent = `${Math.round(zoom * 100)} %`;
+    zoomLabel.textContent = `${Math.round(ds * 100)} %`;   // zoom réel : 100 % = un pixel du document par pixel d'écran
     if (isCropping) updateCropOverlay();
 }
 
@@ -88,14 +86,15 @@ function renderView() {
     ctxA.drawImage(after, 0, 0);
 
     if (splitView) {
-        const before = renderComposite(w, h, false);
+        // « Avant » = l'image telle qu'ouverte (étirée à la taille actuelle si elle a été recadrée ou redimensionnée).
         const ctxB = stageBefore.getContext('2d');
         ctxB.clearRect(0, 0, w, h);
-        ctxB.drawImage(before, 0, 0);
+        if (originalCanvas) ctxB.drawImage(originalCanvas, 0, 0, w, h);
         stageBefore.style.clipPath = `inset(0 ${100 - splitPct}% 0 0)`;
     }
     stageBefore.classList.toggle('hidden', !splitView);
     compareHandle.classList.toggle('hidden', !splitView);
+    compareLabels.classList.toggle('hidden', !splitView);
     compareHandle.style.left = `${splitPct}%`;
     applyViewTransform();
 }
@@ -301,8 +300,8 @@ viewport.addEventListener('contextmenu', (e) => e.preventDefault());
 
 function setSplitView(on) {
     splitView = on;
-    tabEditBtn.classList.toggle('active', !on);
-    tabSplitBtn.classList.toggle('active', on);
+    compareBtn.classList.toggle('active', on);
+    compareBtn.setAttribute('aria-pressed', String(on));
     scheduleRender();
 }
 

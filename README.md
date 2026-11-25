@@ -20,8 +20,10 @@ L'application est construite avec [Tauri](https://tauri.app) : le cœur est en *
   - `js/view.js` : affichage, zoom, pinceau, recadrage ;
   - `js/io.js` : ouvrir, coller, enregistrer, exporter ;
   - `js/updater.js` : mise à jour automatique ;
-  - `js/ui.js` : panneaux, raccourcis, menus, fermeture ;
+  - `js/shortcuts.js` : raccourcis clavier (fonction pure, testée) et leur affichage selon la plateforme ;
+  - `js/ui.js` : panneaux, calques, commandes des menus, fermeture ;
   - `tauri-shim.js` relie l'interface aux commandes Rust.
+- `tests/` : tests JavaScript (`node:test` + `@napi-rs/canvas` : les pixels sont réellement calculés).
 - `version.txt` : source unique de la version (`Cargo.toml` et `package.json` doivent rester alignés ; un test le vérifie).
 - `installer/` : création, signature et notarisation du `.dmg` macOS.
 - `.github/workflows/` : tests et release automatiques.
@@ -33,9 +35,10 @@ L'application est construite avec [Tauri](https://tauri.app) : le cœur est en *
 Prérequis : [Rust](https://rustup.rs) et Node.js.
 
 ```bash
-npm install            # installe le CLI Tauri
+npm install            # installe le CLI Tauri et les outils de test
+npm test                                          # tests de l'interface (JavaScript)
 npx tauri dev          # lance l'application en mode développement
-cargo test --manifest-path src-tauri/Cargo.toml   # tests
+cargo test --manifest-path src-tauri/Cargo.toml   # tests Rust
 npx tauri build --bundles app                     # construit PicTone.app (macOS)
 npx tauri build --bundles nsis                    # construit l'installeur (Windows)
 ```

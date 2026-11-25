@@ -1,6 +1,6 @@
 name: Tests
 
-# Tests Rust sur macOS et Windows, et vérification que l'application se construit.
+# Tests JavaScript (interface) et Rust sur macOS et Windows, et vérification que l'application se construit.
 # Déclenché par les pull requests et par les pushes sur main (pas de doublon sur les branches).
 on:
   push:
@@ -27,8 +27,11 @@ jobs:
         with:
           workspaces: src-tauri
 
-      - name: Installer le CLI Tauri
+      - name: Installer les dépendances
         run: npm ci
+
+      - name: Tests de l'interface (JavaScript)
+        run: npm test
 
       - name: Tests Rust
         run: cargo test --manifest-path src-tauri/Cargo.toml
@@ -51,8 +54,11 @@ jobs:
         with:
           workspaces: src-tauri
 
-      - name: Installer le CLI Tauri
+      - name: Installer les dépendances
         run: npm ci
+
+      - name: Tests de l'interface (JavaScript)
+        run: npm test
 
       - name: Tests Rust
         run: cargo test --manifest-path src-tauri/Cargo.toml

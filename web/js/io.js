@@ -5,6 +5,10 @@
 
 const PROJECT_EXT = '.pictone';
 
+// Réglages d'export (panneau de gauche) : format et qualité (JPEG, WebP).
+let exportFormat = 'png';
+let exportQuality = 0.9;
+
 function nativeApi() {
     return window.pywebview && window.pywebview.api;
 }
@@ -12,6 +16,13 @@ function nativeApi() {
 function baseName(filename) {
     const i = filename.lastIndexOf('.');
     return i > 0 ? filename.slice(0, i) : filename;
+}
+
+// Fichier (File) reconstruit depuis une data URL reçue de la boîte native d'ouverture.
+function fileFromDataUrl(dataUrl, name, mime) {
+    const comma = dataUrl.indexOf(',');
+    const bytes = Uint8Array.from(atob(dataUrl.slice(comma + 1)), (c) => c.charCodeAt(0));
+    return new File([bytes], name, { type: mime || '' });
 }
 
 function readAsDataURL(blob) {
@@ -138,11 +149,22 @@ function renderFullImage() {
     return rotateCanvas(renderComposite(doc.w, doc.h, true), rotation);
 }
 
+// Copie du canevas posée sur un fond blanc opaque.
+function onWhiteBackground(src) {
+    const out = blankCanvas(src.width, src.height);
+    const ctx = out.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, out.width, out.height);
+    ctx.drawImage(src, 0, 0);
+    return out;
+}
+
 // Export image (PNG, JPEG, WebP) : toujours avec la boîte « Enregistrer sous ».
 async function exportImage() {
     if (!hasDoc()) return false;
     const ext = { png: 'png', jpeg: 'jpg', webp: 'webp' }[exportFormat] || 'png';
-    const canvas = renderFullImage();
+    let canvas = renderFullImage();
+    if (exportFormat === 'jpeg') canvas = onWhiteBackground(canvas);   // JPEG n'a pas de transparence : fond blanc, pas noir
     const dataUrl = canvas.toDataURL(`image/${exportFormat}`, exportFormat === 'png' ? 1.0 : exportQuality);
     return saveDataUrl(dataUrl, exportFileName(ext));
 }

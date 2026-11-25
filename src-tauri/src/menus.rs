@@ -9,27 +9,51 @@ use std::sync::Mutex;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Wry};
 
-/// Libellé de raccourci pour la plateforme : « Ctrl+Shift+E » devient « ⇧⌘E » sur macOS.
+/// Libellé de raccourci pour la plateforme : « Ctrl+Shift+E » devient « ⇧⌘E » sur macOS
+/// et « Ctrl+Maj+E » sous Windows. Le dernier élément est la touche, même si c'est « + » (« Ctrl++ »).
 pub fn shortcut_label(canonical: &str) -> String {
-    if !cfg!(target_os = "macos") {
-        return canonical.to_string();
-    }
-    // Ordre des modificateurs sur macOS : ⌥ ⇧ ⌘, puis la touche.
-    let (mut alt, mut shift, mut cmd_key, mut key) = (false, false, false, String::new());
-    for part in canonical.split('+') {
-        match part {
-            "Ctrl" => cmd_key = true,
-            "Shift" => shift = true,
-            "Alt" => alt = true,
-            other => key = other.to_string(),
+    format_shortcut(canonical, cfg!(target_os = "macos"))
+}
+
+/// Mise en forme pour une plateforme donnée (testable sur n'importe quel système).
+pub fn format_shortcut(canonical: &str, mac: bool) -> String {
+    let (mut ctrl, mut shift, mut alt) = (false, false, false);
+    let mut rest = canonical;
+    loop {
+        if let Some(r) = rest.strip_prefix("Ctrl+") {
+            ctrl = true;
+            rest = r;
+        } else if let Some(r) = rest.strip_prefix("Shift+").or_else(|| rest.strip_prefix("Maj+")) {
+            shift = true;
+            rest = r;
+        } else if let Some(r) = rest.strip_prefix("Alt+") {
+            alt = true;
+            rest = r;
+        } else {
+            break;
         }
     }
-    let mut out = String::new();
-    if alt { out.push('⌥'); }
-    if shift { out.push('⇧'); }
-    if cmd_key { out.push('⌘'); }
-    out.push_str(&key);
-    out
+    if mac {
+        // Ordre des modificateurs sur macOS : ⌥ ⇧ ⌘, puis la touche.
+        let key = match rest {
+            "Backspace" => "⌫",
+            "Delete" => "⌦",
+            other => other,
+        };
+        let mut out = String::new();
+        if alt { out.push('⌥'); }
+        if shift { out.push('⇧'); }
+        if ctrl { out.push('⌘'); }
+        out.push_str(key);
+        out
+    } else {
+        let mut parts = Vec::new();
+        if ctrl { parts.push("Ctrl"); }
+        if alt { parts.push("Alt"); }
+        if shift { parts.push("Maj"); }
+        parts.push(rest);
+        parts.join("+")
+    }
 }
 
 pub struct Entry {
@@ -84,11 +108,11 @@ pub fn spec() -> Vec<MenuSpec> {
         MenuSpec { title: "Calque", items: vec![
             cmd("newLayer", "Nouveau calque", Some("Ctrl+Shift+N")),
             cmd("duplicateLayer", "Dupliquer le calque", Some("Ctrl+J")),
-            cmd("deleteLayer", "Supprimer le calque", None),
+            cmd("deleteLayer", "Supprimer le calque", Some("Ctrl+Backspace")),
             Item::Separator,
             cmd("moveLayerUp", "Monter", Some("Ctrl+]")),
             cmd("moveLayerDown", "Descendre", Some("Ctrl+[")),
-            cmd("mergeDown", "Fusionner avec le calque du dessous", Some("Ctrl+E")),
+            cmd("mergeLayers", "Fusionner les calques sélectionnés…", Some("Ctrl+E")),
         ]},
         MenuSpec { title: "Affichage", items: vec![
             cmd("zoomIn", "Zoom avant", Some("Ctrl++")),
@@ -96,7 +120,7 @@ pub fn spec() -> Vec<MenuSpec> {
             cmd("zoomFit", "Ajuster à la fenêtre", Some("Ctrl+0")),
             cmd("zoomActual", "Taille réelle", Some("Ctrl+1")),
             Item::Separator,
-            cmd("toggleSplit", "Avant / Après", Some("Ctrl+\\")),
+            cmd("toggleSplit", "Comparer avant / après", Some("Ctrl+B")),
             Item::Separator,
             cmd("tabFilters", "Panneau Filtres", None),
             cmd("tabLayers", "Panneau Calques", None),
@@ -104,7 +128,7 @@ pub fn spec() -> Vec<MenuSpec> {
             cmd("tabTransform", "Panneau Transformer", None),
         ]},
         MenuSpec { title: "Aide", items: vec![
-            cmd("shortcuts", "Raccourcis clavier", Some("Ctrl+/")),
+            cmd("shortcuts", "Raccourcis clavier", Some("Ctrl+Shift+/")),
             Item::Separator,
             cmd("checkUpdates", "Vérifier les mises à jour", None),
             cmd("about", "À propos de PicTone", None),
@@ -191,30 +215,80 @@ mod tests {
     }
 
     #[test]
-    fn le_raccourci_suit_la_plateforme() {
-        let win = shortcut_label("Ctrl+Shift+E");
-        if cfg!(target_os = "macos") {
-            assert_eq!(win, "⇧⌘E");
-        } else {
-            assert_eq!(win, "Ctrl+Shift+E");
-        }
+    fn raccourcis_macos() {
+        assert_eq!(format_shortcut("Ctrl+Shift+E", true), "⇧⌘E");
+        assert_eq!(format_shortcut("Ctrl+O", true), "⌘O");
+        assert_eq!(format_shortcut("Ctrl+Backspace", true), "⌘⌫");
+        assert_eq!(format_shortcut("Ctrl+Alt+Shift+K", true), "⌥⇧⌘K");
     }
 
-    /// Chaque commande du menu doit être reconnue par l'interface (picToneCommand, js/ui.js).
     #[test]
-    fn toutes_les_commandes_existent_dans_l_interface() {
-        let js = [
-            include_str!("../../web/js/ui.js"),
-            include_str!("../../web/js/io.js"),
-            include_str!("../../web/js/view.js"),
-            include_str!("../../web/js/model.js"),
-        ]
-        .join("\n");
+    fn raccourcis_windows() {
+        assert_eq!(format_shortcut("Ctrl+Shift+E", false), "Ctrl+Maj+E");
+        assert_eq!(format_shortcut("Ctrl+O", false), "Ctrl+O");
+        assert_eq!(format_shortcut("Ctrl+Backspace", false), "Ctrl+Backspace");
+    }
+
+    /// La touche « + » ou « - » est la touche elle-même, pas un séparateur.
+    #[test]
+    fn touches_plus_et_moins() {
+        assert_eq!(format_shortcut("Ctrl++", true), "⌘+");
+        assert_eq!(format_shortcut("Ctrl++", false), "Ctrl++");
+        assert_eq!(format_shortcut("Ctrl+-", true), "⌘-");
+        assert_eq!(format_shortcut("Ctrl+Shift+/", true), "⇧⌘/");
+        assert_eq!(format_shortcut("Ctrl+Shift+/", false), "Ctrl+Maj+/");
+    }
+
+    #[test]
+    fn le_libelle_de_plateforme_est_celui_de_la_plateforme_courante() {
+        assert_eq!(shortcut_label("Ctrl+Shift+E"), format_shortcut("Ctrl+Shift+E", cfg!(target_os = "macos")));
+    }
+
+    /// Un même raccourci ne doit pas être attribué à deux commandes.
+    #[test]
+    fn les_raccourcis_sont_uniques() {
+        let mut seen = std::collections::HashMap::new();
         for m in spec() {
             for it in m.items {
                 if let Item::Command(e) = it {
-                    if e.id == "about" || e.id == "checkUpdates" { continue; } // traitées par l'interface (updater.js)
-                    assert!(js.contains(&format!("'{}'", e.id)), "commande absente de l'interface : {}", e.id);
+                    if let Some(k) = e.shortcut {
+                        if let Some(other) = seen.insert(k, e.id) {
+                            panic!("{k} est utilisé par « {other} » et « {} »", e.id);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Les menus du cahier des charges : calques multiples, fusion confirmée, comparaison.
+    #[test]
+    fn les_commandes_attendues_sont_dans_les_menus() {
+        let mut ids = Vec::new();
+        for m in spec() {
+            for it in m.items {
+                if let Item::Command(e) = it { ids.push(e.id); }
+            }
+        }
+        for attendu in ["open", "save", "export", "mergeLayers", "deleteLayer", "toggleSplit", "shortcuts", "zoomFit", "zoomActual"] {
+            assert!(ids.contains(&attendu), "commande manquante dans les menus : {attendu}");
+        }
+        assert!(!ids.contains(&"mergeDown"), "mergeDown a été remplacé par mergeLayers");
+    }
+
+    /// Chaque commande du menu doit être traitée par runCommand (js/ui.js) et avoir son état (griser / activer).
+    #[test]
+    fn toutes_les_commandes_existent_dans_l_interface() {
+        let ui = include_str!("../../web/js/ui.js");
+        let run = ui.split("function runCommand").nth(1).expect("runCommand absente de ui.js");
+        let run = run.split("window.picToneCommand").next().unwrap();
+        let states = ui.split("function publishMenuStates").nth(1).expect("publishMenuStates absente de ui.js");
+        let states = states.split("function updateControlStates").next().unwrap();
+        for m in spec() {
+            for it in m.items {
+                if let Item::Command(e) = it {
+                    assert!(run.contains(&format!("case '{}':", e.id)), "commande non traitée par runCommand : {}", e.id);
+                    assert!(states.contains(&format!("{}:", e.id)), "état de menu absent pour : {}", e.id);
                 }
             }
         }

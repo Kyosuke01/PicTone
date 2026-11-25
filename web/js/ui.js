@@ -208,27 +208,40 @@ function layerThumb(layer) {
     c.width = Math.max(1, Math.round(h * doc.w / doc.h));
     c.height = h;
     const ctx = c.getContext('2d');
-    ctx.fillStyle = '#111';
-    ctx.fillRect(0, 0, c.width, c.height);
     ctx.drawImage(layer.canvas, 0, 0, c.width, c.height);
     return c;
 }
 
+const ICON_EYE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+const ICON_EYE_OFF = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17.9 17.9A10.1 10.1 0 0112 19C5.6 19 2 12 2 12a18 18 0 015.1-5.9M9.9 5.2A9.6 9.6 0 0112 5c6.4 0 10 7 10 7a18 18 0 01-2.2 3.2M1 1l22 22"/></svg>';
+
+// Touche de commande de la plateforme : ⌘ sous macOS, Ctrl sous Windows.
+const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+const MOD_NAME = IS_MAC ? '⌘' : 'Ctrl';
+const UNDO_KEYS = formatShortcut('Ctrl+Z', IS_MAC);
+const isModClick = (e) => (IS_MAC ? e.metaKey : e.ctrlKey);
+
 function refreshLayers() {
+    const hadFocus = layersList.contains(document.activeElement);
     layersList.textContent = '';
     if (!hasDoc()) return;
+    let focusRow = null;
     // Du calque du dessus au calque du fond
     for (const layer of [...doc.layers].reverse()) {
         const row = document.createElement('div');
-        row.className = 'layer-row' + (layer.id === doc.activeId ? ' selected' : '') + (layer.visible ? '' : ' hidden-layer');
+        const isActive = layer.id === doc.activeId;
+        row.className = 'layer-row' + (selectedIds.has(layer.id) ? ' selected' : '') + (isActive ? ' active' : '')
+            + (layer.visible ? '' : ' hidden-layer');
         row.dataset.id = String(layer.id);
+        row.tabIndex = 0;
+        row.setAttribute('aria-selected', String(selectedIds.has(layer.id)));
 
         const eye = document.createElement('button');
         eye.type = 'button';
         eye.className = 'layer-eye';
         eye.title = layer.visible ? 'Masquer le calque' : 'Afficher le calque';
         eye.setAttribute('aria-label', eye.title);
-        eye.textContent = layer.visible ? '👁' : '—';
+        eye.innerHTML = layer.visible ? ICON_EYE : ICON_EYE_OFF;
         eye.addEventListener('click', (e) => { e.stopPropagation(); setLayerVisible(layer.id, !layer.visible); });
 
         const thumb = layerThumb(layer);
@@ -245,7 +258,10 @@ function refreshLayers() {
             input.value = layer.name;
             input.className = 'layer-rename';
             input.addEventListener('click', (ev) => ev.stopPropagation());
+            let finished = false;
             const done = (save) => {
+                if (finished) return;
+                finished = true;
                 if (save) renameLayer(layer.id, input.value); else refreshLayers();
             };
             input.addEventListener('keydown', (ev) => {
@@ -258,12 +274,17 @@ function refreshLayers() {
             input.select();
         });
 
-        row.addEventListener('click', () => selectLayer(layer.id));
+        // Clic : ce calque seul · Maj + clic : plage · ⌘ / Ctrl + clic : ajouter ou retirer un calque
+        row.addEventListener('click', (e) => selectLayer(layer.id, { range: e.shiftKey, toggle: isModClick(e) }));
         row.append(eye, thumb, name);
         layersList.appendChild(row);
+        if (isActive) focusRow = row;
     }
+    if (hadFocus && focusRow) focusRow.focus({ preventScroll: true });
+
     const layer = activeLayer();
-    layerActiveName.textContent = layer ? layer.name : '';
+    const count = selectedLayers().length;
+    layerActiveName.textContent = count > 1 ? `${count} calques sélectionnés` : (layer ? layer.name : '');
     layerOpacity.disabled = !layer;
     inputLayerOpacity.disabled = !layer;
     if (layer) {
@@ -273,7 +294,7 @@ function refreshLayers() {
     const idx = activeIndex();
     $('btn-layer-up').disabled = idx < 0 || idx >= doc.layers.length - 1;
     $('btn-layer-down').disabled = idx <= 0;
-    $('btn-layer-merge').disabled = idx <= 0;
+    $('btn-layer-merge').disabled = doc.layers.length <= 1;
     $('btn-layer-del').disabled = doc.layers.length <= 1;
     $('btn-layer-flatten').disabled = doc.layers.length <= 1;
     $('btn-layer-add').disabled = !hasDoc();
@@ -298,13 +319,45 @@ inputLayerOpacity.addEventListener('change', () => {
     setLayerOpacity(layer.id, v / 100, true);
 });
 
+// Suppression avec confirmation : tous les calques sélectionnés (au moins un doit rester).
+async function deleteLayersWithConfirm() {
+    if (!hasDoc()) return;
+    const chosen = selectedLayers();
+    if (!chosen.length) return;
+    if (chosen.length >= doc.layers.length) {
+        await showAlert('Suppression impossible', 'Il doit rester au moins un calque dans le document.');
+        return;
+    }
+    const what = chosen.length === 1 ? `le calque « ${chosen[0].name} »` : `les ${chosen.length} calques sélectionnés`;
+    const ok = await openModal('Supprimer ?', `Supprimer ${what} ? Annuler (${UNDO_KEYS}) permet de revenir en arrière.`,
+        { cancel: 'Annuler', confirm: 'Supprimer' });
+    if (ok) deleteSelectedLayers();
+}
+
+// Fusion : l'utilisateur sélectionne ses calques, puis confirme.
+async function mergeWithConfirm() {
+    if (!hasDoc()) return;
+    const parts = mergeableLayers();
+    if (parts.length < 2) {
+        await showAlert('Fusionner les calques',
+            `Sélectionnez au moins deux calques visibles : Maj + clic pour une plage, ${MOD_NAME} + clic pour les choisir un par un.`);
+        return;
+    }
+    const names = parts.map((l) => `« ${l.name} »`).join(', ');
+    const ok = await openModal('Fusionner les calques ?',
+        `Les ${parts.length} calques sélectionnés (${names}) seront fusionnés en un seul. Annuler (${UNDO_KEYS}) permet de revenir en arrière.`,
+        { cancel: 'Annuler', confirm: 'Fusionner' });
+    if (ok) mergeSelectedLayers();
+}
+
 $('btn-layer-add').addEventListener('click', () => addLayer());
 $('btn-layer-dup').addEventListener('click', () => duplicateLayer());
-$('btn-layer-del').addEventListener('click', () => deleteLayer());
+$('btn-layer-del').addEventListener('click', () => deleteLayersWithConfirm());
 $('btn-layer-up').addEventListener('click', () => moveLayer(1));
 $('btn-layer-down').addEventListener('click', () => moveLayer(-1));
-$('btn-layer-merge').addEventListener('click', () => mergeDown());
+$('btn-layer-merge').addEventListener('click', () => mergeWithConfirm());
 $('btn-layer-flatten').addEventListener('click', async () => {
+    if (!hasDoc() || doc.layers.length <= 1) return;
     if (!(await showConfirm('Aplatir les calques ?', 'Les calques visibles seront fusionnés en un seul. Vous pourrez revenir en arrière avec Annuler.'))) return;
     flattenLayers();
 });
@@ -446,8 +499,7 @@ btnReset.addEventListener('click', async () => {
 
 btnUndo.addEventListener('click', () => undo());
 btnRedo.addEventListener('click', () => redo());
-tabEditBtn.addEventListener('click', () => setSplitView(false));
-tabSplitBtn.addEventListener('click', () => setSplitView(true));
+compareBtn.addEventListener('click', () => setSplitView(!splitView));
 $('btn-zoom-in').addEventListener('click', () => setZoom(zoom * 1.25));
 $('btn-zoom-out').addEventListener('click', () => setZoom(zoom / 1.25));
 $('btn-zoom-fit').addEventListener('click', () => zoomFit());
@@ -457,7 +509,21 @@ $('btn-zoom-actual').addEventListener('click', () => zoomActual());
 // Fichiers : bouton Ouvrir, zone de dépôt, glisser-déposer
 // ---------------------------------------------------------------------------
 
-function chooseFile(mode) {
+// Ouvre le sélecteur de fichier : la boîte native de l'application (fiable pour les projets .pictone),
+// ou le champ <input type="file"> dans un navigateur.
+async function chooseFile(mode) {
+    const api = nativeApi();
+    if (api && typeof api.pick_file === 'function') {
+        try {
+            const picked = await api.pick_file(mode);
+            if (!picked) return;   // annulé
+            const file = fileFromDataUrl(picked.data_url, picked.name, picked.mime);
+            if (mode === 'layer') addImageFromFile(file); else openFile(file);
+            return;
+        } catch (e) {
+            updLog(`ÉCHEC du sélecteur natif, retour au champ fichier : ${e && e.message ? e.message : e}`);
+        }
+    }
     pendingFileMode = mode;
     fileInput.click();
 }
@@ -490,9 +556,6 @@ dropZone.addEventListener('drop', (e) => { e.preventDefault(); const f = e.dataT
 // ---------------------------------------------------------------------------
 
 window.addEventListener('keydown', (e) => {
-    const mod = e.ctrlKey || e.metaKey;
-    const key = e.key.toLowerCase();
-
     if (e.key === 'Escape') {
         if (!shortcutsModal.classList.contains('hidden')) { hideShortcuts(); return; }
         if (modalResolver) { modalResolver(false); return; }
@@ -500,37 +563,18 @@ window.addEventListener('keydown', (e) => {
         if (isCropping) cancelCrop();
         return;
     }
-    if (isTextFieldFocused() && !(mod && (key === 's' || key === 'o'))) return;
-
-    if (mod && !e.altKey) {
-        const run = (fn) => { e.preventDefault(); fn(); };
-        if (key === 'o' && !e.shiftKey) return run(() => chooseFile('open'));
-        if (key === 's' && !e.shiftKey) return run(() => saveProject());
-        if (key === 'e' && e.shiftKey) return run(() => exportImage());
-        if (key === 'z' && !e.shiftKey) return run(() => undo());
-        if ((key === 'z' && e.shiftKey) || key === 'y') return run(() => redo());
-        if (key === 'n' && e.shiftKey) return run(() => addLayer());
-        if (key === 'j' && !e.shiftKey) return run(() => duplicateLayer());
-        if (key === 'e' && !e.shiftKey) return run(() => mergeDown());
-        if (key === ']' && !e.shiftKey) return run(() => moveLayer(1));
-        if (key === '[' && !e.shiftKey) return run(() => moveLayer(-1));
-        if (key === 'c' || key === 'x') {
-            if (hasDoc() && !isTextFieldFocused()) return run(() => copyImageToClipboard());
-        }
-        if (key === 'v' && !isTextFieldFocused()) return run(() => pasteFromClipboard());
-        if (key === '=' || key === '+') return run(() => setZoom(zoom * 1.25));
-        if (key === '-') return run(() => setZoom(zoom / 1.25));
-        if (key === '0') return run(() => zoomFit());
-        if (key === '1') return run(() => zoomActual());
-        if (key === '\\') return run(() => setSplitView(!splitView));
-        if (key === '/') return run(() => showShortcuts());
-        return;
-    }
-    if (!mod && hasDoc() && !isCropping) {
-        if (key === '[') { brushSize = Math.max(1, brushSize - 2); syncBrushSizeUI(); }
-        if (key === ']') { brushSize = Math.min(80, brushSize + 2); syncBrushSizeUI(); }
-    }
-    if (isCropping && e.key === 'Enter') applyCrop();
+    // Pas de raccourci pendant qu'une fenêtre de dialogue est ouverte.
+    if (modalResolver || !shortcutsModal.classList.contains('hidden') || !quitModal.classList.contains('hidden')) return;
+    const command = shortcutCommand(e, {
+        isMac: IS_MAC,
+        textFocused: isTextFieldFocused(),
+        cropping: isCropping,
+        hasDoc: hasDoc(),
+        layersFocused: layersList.contains(document.activeElement),
+    });
+    if (!command) return;
+    e.preventDefault();
+    runCommand(command);
 });
 
 function syncBrushSizeUI() {
@@ -564,7 +608,8 @@ async function showAboutDialog() {
 // Commandes des menus natifs (appelées depuis Rust : picToneCommand('…'))
 // ---------------------------------------------------------------------------
 
-window.picToneCommand = (cmd) => {
+// Toutes les commandes, qu'elles viennent d'un menu natif, d'un raccourci clavier ou d'un bouton.
+function runCommand(cmd) {
     switch (cmd) {
         case 'open':            chooseFile('open'); break;
         case 'save':            saveProject(); break;
@@ -575,34 +620,41 @@ window.picToneCommand = (cmd) => {
         case 'cut':
         case 'copy':            if (!isTextFieldFocused()) copyImageToClipboard(); else document.execCommand(cmd); break;
         case 'paste':           if (isTextFieldFocused()) document.execCommand('paste'); else pasteFromClipboard(); break;
-        case 'selectAll':       if (isTextFieldFocused()) document.activeElement.select(); break;
+        case 'selectAll':       if (isTextFieldFocused()) document.activeElement.select(); else selectAllLayers(); break;
+        case 'selectAllLayers': selectAllLayers(); break;
         case 'zoomIn':          setZoom(zoom * 1.25); break;
         case 'zoomOut':         setZoom(zoom / 1.25); break;
         case 'zoomFit':         zoomFit(); break;
         case 'zoomActual':      zoomActual(); break;
-        case 'toggleSplit':     setSplitView(!splitView); break;
+        case 'toggleSplit':     if (hasDoc()) setSplitView(!splitView); break;
         case 'tabFilters':      showSidebarTab('filters'); break;
         case 'tabLayers':       showSidebarTab('layers'); break;
         case 'tabDraw':         showSidebarTab('draw'); break;
         case 'tabTransform':    showSidebarTab('transform'); break;
         case 'newLayer':        addLayer(); break;
         case 'duplicateLayer':  duplicateLayer(); break;
-        case 'deleteLayer':     deleteLayer(); break;
+        case 'deleteLayer':     deleteLayersWithConfirm(); break;
         case 'moveLayerUp':     moveLayer(1); break;
         case 'moveLayerDown':   moveLayer(-1); break;
-        case 'mergeDown':       mergeDown(); break;
-        case 'flatten':        $('btn-layer-flatten').click(); break;
+        case 'mergeLayers':     mergeWithConfirm(); break;
+        case 'flatten':         $('btn-layer-flatten').click(); break;
         case 'cropStart':       startCrop(); break;
+        case 'cropApply':       applyCrop(); break;
         case 'flipH':           flipDocument(true); break;
         case 'flipV':           flipDocument(false); break;
         case 'resize':          showSidebarTab('transform'); resizeW.focus(); break;
+        case 'brushSmaller':    brushSize = Math.max(1, brushSize - 2); syncBrushSizeUI(); break;
+        case 'brushLarger':     brushSize = Math.min(80, brushSize + 2); syncBrushSizeUI(); break;
         case 'shortcuts':       showShortcuts(); break;
         case 'checkUpdates':    checkUpdatesWithReport(); break;
         case 'about':           showAboutDialog(); break;
-        default: updLog(`commande de menu inconnue : ${cmd}`);
+        default: updLog(`commande inconnue : ${cmd}`); return;
     }
-    updLog(`commande de menu : ${cmd}`);
-};
+    updLog(`commande : ${cmd}`);
+}
+
+// Appelée depuis Rust pour les menus natifs : picToneCommand('…').
+window.picToneCommand = runCommand;
 
 // États des menus natifs : grisés quand la commande n'a pas de sens.
 let lastPublishedStates = '';
@@ -636,7 +688,7 @@ function publishMenuStates() {
         deleteLayer: has && doc.layers.length > 1,
         moveLayerUp: has && idx < doc.layers.length - 1,
         moveLayerDown: has && idx > 0,
-        mergeDown: has && idx > 0,
+        mergeLayers: has && doc.layers.length > 1,
         flatten: has && doc.layers.length > 1,
         cropStart: has && !isCropping,
         flipH: has,
@@ -677,7 +729,7 @@ function refreshAll() {
     if (has) {
         fileNameText.textContent = doc.name;
         fileSizeText.textContent = `${doc.w} × ${doc.h} px`;
-        document.title = `${doc.name}${isDirty() ? ' •' : ''} — PicTone`;
+        document.title = `${doc.name}${isDirty() ? ' (modifié)' : ''} — PicTone`;
         if (!isCropping) applyViewTransform();
         scheduleRender();
     } else {
@@ -696,8 +748,7 @@ function refreshAll() {
     $('btn-zoom-out').disabled = !has;
     $('btn-zoom-fit').disabled = !has;
     $('btn-zoom-actual').disabled = !has;
-    tabEditBtn.disabled = !has;
-    tabSplitBtn.disabled = !has;
+    compareBtn.disabled = !has;
     $('btn-flip-h').disabled = !has;
     $('btn-flip-v').disabled = !has;
     refreshPanels();
@@ -784,6 +835,7 @@ async function handleQuitRequest() {
     const choice = await askQuitChoice();
     if (choice === 'cancel') return;
     if (choice === 'quit') { quitApp(); return; }
+    // « Enregistrer » ouvre toujours la boîte « Enregistrer sous » : aucun fichier n'est remplacé sans choix.
     const saved = await saveProject();
     if (saved) quitApp();
 }
@@ -798,13 +850,70 @@ window.addEventListener('beforeunload', (e) => {
 // Initialisation
 // ---------------------------------------------------------------------------
 
+// Écrit les raccourcis selon la plateforme : « Ctrl+Maj+N » devient « ⇧⌘N » sous macOS.
 function applyPlatformShortcuts() {
-    if (!/Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent)) return;
-    document.querySelectorAll('[title*="Ctrl+"]').forEach((el) => { el.title = el.title.replace(/Ctrl\+/g, '⌘'); });
-    document.querySelectorAll('[data-shortcut*="Ctrl+"]').forEach((el) => {
-        el.dataset.shortcut = el.dataset.shortcut.replace(/Ctrl\+/g, '⌘');
+    // Infobulles : « Annuler (Ctrl+Z) » → « Annuler (⌘Z) »
+    document.querySelectorAll('[title*="Ctrl+"]').forEach((el) => {
+        el.title = el.title.replace(/\(([^)]*Ctrl\+[^)]*)\)/g, (_, k) => `(${formatShortcut(k, IS_MAC)})`);
     });
-    document.querySelectorAll('.format-hint').forEach((el) => { el.textContent = el.textContent.replace(/Ctrl\+/g, '⌘'); });
+    document.querySelectorAll('.format-hint, [data-shortcut]').forEach((el) => {
+        el.textContent = el.textContent.replace(/Ctrl\+[A-Za-z+\-\/\[\]]+/g, (k) => formatShortcut(k, IS_MAC));
+    });
+    document.querySelectorAll('[data-mod]').forEach((el) => { el.textContent = MOD_NAME; });
+    document.querySelectorAll('[data-shift]').forEach((el) => { el.textContent = IS_MAC ? '⇧' : 'Maj'; });
+    renderShortcutsList();
+}
+
+// Liste de la fenêtre « Raccourcis clavier », générée selon la plateforme.
+const SHORTCUT_LIST = [
+    ['Ctrl+O', 'Ouvrir une image ou un projet'],
+    ['Ctrl+S', 'Enregistrer le projet'],
+    ['Ctrl+Shift+E', "Exporter l'image"],
+    ['Ctrl+Z', 'Annuler'],
+    ['Ctrl+Shift+Z', 'Rétablir (aussi Ctrl+Y)'],
+    ['Ctrl+C', "Copier l'image"],
+    ['Ctrl+V', 'Coller une image comme calque'],
+    ['Ctrl+Shift+N', 'Nouveau calque'],
+    ['Ctrl+J', 'Dupliquer le calque'],
+    ['Ctrl+Backspace', 'Supprimer les calques sélectionnés'],
+    ['Ctrl+E', 'Fusionner les calques sélectionnés'],
+    ['Ctrl+]', 'Monter le calque'],
+    ['Ctrl+[', 'Descendre le calque'],
+    ['Ctrl+B', 'Comparer avant / après'],
+    ['Ctrl++', 'Zoom avant'],
+    ['Ctrl+-', 'Zoom arrière'],
+    ['Ctrl+0', 'Ajuster à la fenêtre'],
+    ['Ctrl+1', 'Taille réelle'],
+    ['Ctrl+Shift+/', 'Afficher cette liste'],
+];
+
+function renderShortcutsList() {
+    const box = $('shortcuts-list');
+    if (!box) return;
+    box.textContent = '';
+    const addRow = (keys, label) => {
+        const row = document.createElement('div');
+        row.className = 'shortcut-row';
+        const k = document.createElement('span');
+        k.className = 'shortcut-keys';
+        for (const part of keys) {
+            const kbd = document.createElement('kbd');
+            kbd.textContent = part;
+            k.appendChild(kbd);
+        }
+        const l = document.createElement('span');
+        l.textContent = label;
+        row.append(k, l);
+        box.appendChild(row);
+    };
+    for (const [keys, label] of SHORTCUT_LIST) {
+        addRow(IS_MAC ? [formatShortcut(keys, true)] : formatShortcut(keys, false).split(/\+(?=.)/), label);
+    }
+    addRow([`${MOD_NAME} + clic`], 'Calques : sélectionner un par un');
+    addRow(['Maj + clic'], 'Calques : sélectionner une plage');
+    addRow(['[', ']'], 'Taille du pinceau');
+    addRow(['Espace + glisser'], 'Déplacer la vue (ou deux doigts)');
+    addRow([`${MOD_NAME} + molette`], 'Zoom (ou pincement)');
 }
 
 function initEditor() {

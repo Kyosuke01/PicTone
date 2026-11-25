@@ -13,6 +13,7 @@
             set_command_states: (states) => call('set_command_states', { states }),
             log_js: (message) => call('log_js', { message: String(message) }),
             save_file: (dataUrl, filename) => call('save_file', { dataUrl, filename }),
+            pick_file: (mode) => call('pick_file', { mode }),
             read_clipboard_image: () => call('read_clipboard_image'),
             quit_app: () => call('quit_app'),
         },
