@@ -12,6 +12,7 @@
     <script src="js/model.js" defer></script>
     <script src="js/view.js" defer></script>
     <script src="js/io.js" defer></script>
+    <script src="js/shortcuts.js" defer></script>
     <script src="js/updater.js" defer></script>
     <script src="js/ui.js" defer></script>
 </head>
@@ -38,9 +39,12 @@
             <!-- Éditeur -->
             <div id="editor" class="editor hidden">
                 <div class="viewer-toolbar">
-                    <div class="viewer-tabs">
-                        <button id="tab-edit" class="tab-btn active" title="Afficher l'image modifiée">Édition</button>
-                        <button id="tab-split" class="tab-btn" title="Comparer avec l'original">Avant / Après</button>
+                    <div class="toolbar-group">
+                        <button id="btn-compare" class="tab-btn compare-btn" aria-pressed="false"
+                                title="Comparer avec l'image d'origine : l'original à gauche, le résultat à droite (Ctrl+B)">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/></svg>
+                            Avant / Après
+                        </button>
                     </div>
                     <div class="toolbar-group">
                         <button id="btn-undo" class="toolbar-btn" title="Annuler (Ctrl+Z)" aria-label="Annuler" disabled>
@@ -51,9 +55,9 @@
                         </button>
                     </div>
                     <div class="toolbar-group zoom-group">
-                        <button id="btn-zoom-out" class="toolbar-btn" title="Zoom arrière (Ctrl+-)" aria-label="Zoom arrière">−</button>
+                        <button id="btn-zoom-out" class="toolbar-btn" title="Zoom arrière (Ctrl+-)" aria-label="Zoom arrière"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg></button>
                         <span id="zoom-label" class="zoom-label">100 %</span>
-                        <button id="btn-zoom-in" class="toolbar-btn" title="Zoom avant (Ctrl++)" aria-label="Zoom avant">+</button>
+                        <button id="btn-zoom-in" class="toolbar-btn" title="Zoom avant (Ctrl++)" aria-label="Zoom avant"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
                         <button id="btn-zoom-fit" class="tab-btn" title="Ajuster à la fenêtre (Ctrl+0)">Ajuster</button>
                         <button id="btn-zoom-actual" class="tab-btn" title="Taille réelle (Ctrl+1)">1:1</button>
                     </div>
@@ -63,6 +67,10 @@
                     <div id="stage-wrap" class="stage-wrap">
                         <canvas id="stage-canvas" class="stage-canvas"></canvas>
                         <canvas id="stage-before" class="stage-canvas stage-before hidden"></canvas>
+                        <div id="compare-labels" class="compare-labels hidden" aria-hidden="true">
+                            <span class="compare-label compare-before">Avant</span>
+                            <span class="compare-label compare-after">Après</span>
+                        </div>
                         <div id="compare-handle" class="slider-handle hidden">
                             <div class="handle-line"></div>
                             <div class="handle-button">
@@ -90,8 +98,8 @@
                 </div>
 
                 <div id="crop-toolbar" class="crop-toolbar hidden">
-                    <button id="btn-crop-apply" class="btn btn-primary btn-small">✓ Recadrer</button>
-                    <button id="btn-crop-cancel" class="btn btn-secondary btn-small">✕ Annuler</button>
+                    <button id="btn-crop-apply" class="btn btn-primary btn-small"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="btn-icon" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>Recadrer</button>
+                    <button id="btn-crop-cancel" class="btn btn-secondary btn-small"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" class="btn-icon" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>Annuler</button>
                 </div>
                 <div id="brush-cursor" class="brush-preview-cursor"></div>
             </div>
@@ -204,19 +212,35 @@
             <div id="panel-layers" class="sidebar-panel scrollable-section">
                 <div id="layers-controls" class="controls-section">
                     <div class="layers-toolbar">
-                        <button id="btn-layer-add" class="icon-btn" title="Nouveau calque (Ctrl+Maj+N)" aria-label="Nouveau calque">+</button>
-                        <button id="btn-add-layer" class="icon-btn" title="Ajouter une image comme calque" aria-label="Ajouter une image comme calque">⤒</button>
-                        <button id="btn-layer-dup" class="icon-btn" title="Dupliquer le calque (Ctrl+J)" aria-label="Dupliquer le calque">⧉</button>
-                        <button id="btn-layer-del" class="icon-btn" title="Supprimer le calque" aria-label="Supprimer le calque">🗑</button>
+                        <button id="btn-layer-add" class="icon-btn" title="Nouveau calque (Ctrl+Maj+N)" aria-label="Nouveau calque">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                        </button>
+                        <button id="btn-add-layer" class="icon-btn" title="Ajouter une image comme calque" aria-label="Ajouter une image comme calque">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="1.8"/><path d="M21 16l-5-5-8 8"/></svg>
+                        </button>
+                        <button id="btn-layer-dup" class="icon-btn" title="Dupliquer le calque (Ctrl+J)" aria-label="Dupliquer le calque">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 012-2h9"/></svg>
+                        </button>
+                        <button id="btn-layer-del" class="icon-btn" title="Supprimer les calques sélectionnés (Ctrl+Backspace)" aria-label="Supprimer les calques sélectionnés">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 002 2h6a2 2 0 002-2l1-12M9 7V4h6v3"/></svg>
+                        </button>
                         <span class="layers-sep"></span>
-                        <button id="btn-layer-up" class="icon-btn" title="Monter (Ctrl+])" aria-label="Monter le calque">↑</button>
-                        <button id="btn-layer-down" class="icon-btn" title="Descendre (Ctrl+[)" aria-label="Descendre le calque">↓</button>
-                        <button id="btn-layer-merge" class="icon-btn" title="Fusionner avec le calque du dessous (Ctrl+E)" aria-label="Fusionner avec le dessous">⤓</button>
+                        <button id="btn-layer-up" class="icon-btn" title="Monter le calque (Ctrl+])" aria-label="Monter le calque">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+                        </button>
+                        <button id="btn-layer-down" class="icon-btn" title="Descendre le calque (Ctrl+[)" aria-label="Descendre le calque">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
+                        </button>
                     </div>
                     <div id="layers-list" class="layers-list"></div>
+                    <p class="layers-hint"><kbd data-mod>Ctrl</kbd> + clic : un par un · <kbd data-shift>Maj</kbd> + clic : une plage</p>
+                    <button id="btn-layer-merge" class="btn btn-secondary btn-small" title="Fusionner les calques sélectionnés en un seul (Ctrl+E)">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="btn-icon" aria-hidden="true"><path d="M6 4v4a6 6 0 006 6 6 6 0 016 6M18 4v4a6 6 0 01-6 6M12 14v6"/></svg>
+                        Fusionner les calques sélectionnés
+                    </button>
 
                     <div class="layer-props">
-                        <div class="section-subtitle">Calque actif : <span id="layer-active-name"></span></div>
+                        <div class="section-subtitle">Sélection : <span id="layer-active-name"></span></div>
                         <div class="slider-group">
                             <div class="slider-header">
                                 <label for="layer-opacity">Opacité</label>
@@ -303,7 +327,8 @@
             <!-- Transformer -->
             <div id="panel-transform" class="sidebar-panel scrollable-section">
                 <div id="transform-controls" class="controls-section">
-                    <div class="section-subtitle">Rotation (aperçu)</div>
+                    <div class="section-subtitle">Rotation</div>
+                    <p class="panel-hint">Faites glisser le curseur : l'image pivote sous vos yeux. Cliquez ensuite sur « Appliquer la rotation » pour l'enregistrer dans tous les calques.</p>
                     <div class="slider-group">
                         <div class="slider-header">
                             <label for="slider-rotation">Angle</label>
@@ -318,6 +343,7 @@
 
                     <div class="separator"></div>
                     <div class="section-subtitle">Retourner l'image</div>
+                    <p class="panel-hint">Crée un effet miroir sur tous les calques, de gauche à droite ou de haut en bas.</p>
                     <div class="flip-grid">
                         <button class="transform-btn" id="btn-flip-h" title="Miroir horizontal">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7h12M8 12h12M8 17h12M4 7h.01M4 12h.01M4 17h.01"/></svg>
@@ -331,10 +357,12 @@
 
                     <div class="separator"></div>
                     <div class="section-subtitle">Recadrer</div>
+                    <p class="panel-hint">Un cadre apparaît sur l'image : déplacez-le ou tirez ses poignées pour choisir la zone à garder, puis validez avec « Recadrer » (ou Entrée).</p>
                     <button id="btn-crop-start" class="btn btn-secondary btn-small">Recadrer le document…</button>
 
                     <div class="separator"></div>
                     <div class="section-subtitle">Redimensionner</div>
+                    <p class="panel-hint">Change la taille de tout le document, en pixels. Le cadenas garde les proportions.</p>
                     <div class="resize-inputs">
                         <div class="resize-field">
                             <label for="resize-width">Largeur</label>
@@ -392,7 +420,7 @@
         <div class="modal-container">
             <div class="modal-header">
                 <span id="modal-title">Notification</span>
-                <button id="modal-close" class="modal-close-btn" aria-label="Fermer">&times;</button>
+                <button id="modal-close" class="modal-close-btn" aria-label="Fermer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
             </div>
             <div class="modal-body">
                 <p id="modal-message">Message...</p>
@@ -411,12 +439,11 @@
                 <span id="quit-title">Quitter PicTone ?</span>
             </div>
             <div class="modal-body">
-                <p>Votre document contient des modifications qui ne sont pas enregistrées.</p>
+                <p>Votre document contient des modifications qui ne sont pas enregistrées. « Enregistrer » vous demande où placer le fichier : rien n'est remplacé sans votre choix.</p>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" data-quit-choice="cancel">Annuler</button>
                 <button class="btn btn-primary" data-quit-choice="save">Enregistrer</button>
-                <button class="btn btn-secondary" data-quit-choice="saveAs">Enregistrer sous</button>
                 <button class="btn btn-danger" data-quit-choice="quit">Quitter</button>
             </div>
         </div>
@@ -427,26 +454,9 @@
         <div class="modal-container wide">
             <div class="modal-header">
                 <span id="shortcuts-title">Raccourcis</span>
-                <button id="shortcuts-close" class="modal-close-btn" aria-label="Fermer">&times;</button>
+                <button id="shortcuts-close" class="modal-close-btn" aria-label="Fermer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
             </div>
-            <div class="modal-body shortcuts">
-                <div><kbd>Ctrl</kbd>+<kbd>O</kbd> Ouvrir</div>
-                <div><kbd>Ctrl</kbd>+<kbd>S</kbd> Enregistrer le projet</div>
-                <div><kbd>Ctrl</kbd>+<kbd>Maj</kbd>+<kbd>E</kbd> Exporter l'image</div>
-                <div><kbd>Ctrl</kbd>+<kbd>Z</kbd> Annuler</div>
-                <div><kbd>Ctrl</kbd>+<kbd>Maj</kbd>+<kbd>Z</kbd> Rétablir</div>
-                <div><kbd>Ctrl</kbd>+<kbd>C</kbd> / <kbd>X</kbd> / <kbd>V</kbd> Copier, couper, coller</div>
-                <div><kbd>Ctrl</kbd>+<kbd>Maj</kbd>+<kbd>N</kbd> Nouveau calque</div>
-                <div><kbd>Ctrl</kbd>+<kbd>J</kbd> Dupliquer le calque</div>
-                <div><kbd>Ctrl</kbd>+<kbd>E</kbd> Fusionner avec le calque du dessous</div>
-                <div><kbd>Ctrl</kbd>+<kbd>[</kbd> / <kbd>]</kbd> Descendre / monter le calque</div>
-                <div><kbd>Ctrl</kbd>+<kbd>+</kbd> / <kbd>-</kbd> Zoom</div>
-                <div><kbd>Ctrl</kbd>+<kbd>0</kbd> Ajuster · <kbd>Ctrl</kbd>+<kbd>1</kbd> Taille réelle</div>
-                <div><kbd>Ctrl</kbd>+<kbd>\</kbd> Avant / Après</div>
-                <div><kbd>[</kbd> / <kbd>]</kbd> Taille du pinceau</div>
-                <div>Espace + glisser, molette ou deux doigts : déplacer la vue</div>
-                <div>Pincement, ou Ctrl + molette : zoom</div>
-            </div>
+            <div class="modal-body shortcuts" id="shortcuts-list"></div>
         </div>
     </div>
 

@@ -1298,8 +1298,16 @@ select:disabled,
 .stage-wrap {
     position: relative;
     flex-shrink: 0;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-    background: #070708;
+    /* Cadre de l'image : damier (comme Photoshop) derrière les zones transparentes, liseré et ombre. */
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35), 0 10px 36px rgba(0, 0, 0, 0.55);
+    background-color: #ffffff;
+    background-image:
+        linear-gradient(45deg, #cfcfd6 25%, transparent 25%),
+        linear-gradient(-45deg, #cfcfd6 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #cfcfd6 75%),
+        linear-gradient(-45deg, transparent 75%, #cfcfd6 75%);
+    background-size: 16px 16px;
+    background-position: 0 0, 0 8px, 8px -8px, -8px 0;
     transform-origin: center center;
 }
 .stage-canvas {
@@ -1393,17 +1401,33 @@ select:disabled,
     cursor: pointer;
 }
 .layer-row:hover { background: var(--bg-hover); }
+.layer-row { user-select: none; outline: none; }
+.layer-row:focus-visible { box-shadow: 0 0 0 2px var(--accent-soft); }
 .layer-row.selected { border-color: var(--accent-color); background: var(--accent-soft); }
+.layer-row.selected.active { border-color: var(--accent-color); box-shadow: inset 3px 0 0 var(--accent-color); }
 .layer-row.hidden-layer .layer-thumb,
 .layer-row.hidden-layer .layer-name { opacity: 0.4; }
 .layer-eye {
     background: none;
     border: none;
     color: var(--text-main);
-    font-size: 13px;
-    width: 22px;
+    width: 24px;
+    height: 24px;
+    padding: 3px;
     cursor: pointer;
     flex-shrink: 0;
+}
+.layer-eye svg, .icon-btn svg { width: 100%; height: 100%; display: block; }
+.icon-btn svg { width: 16px; height: 16px; }
+.layer-thumb {
+    background-color: #fff;
+    background-image:
+        linear-gradient(45deg, #cfcfd6 25%, transparent 25%),
+        linear-gradient(-45deg, #cfcfd6 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #cfcfd6 75%),
+        linear-gradient(-45deg, transparent 75%, #cfcfd6 75%);
+    background-size: 8px 8px;
+    background-position: 0 0, 0 4px, 4px -4px, -4px 0;
 }
 .layer-thumb {
     height: 36px;
@@ -1455,3 +1479,42 @@ kbd {
     color: var(--text-main);
 }
 @media (max-width: 640px) { .shortcuts { grid-template-columns: 1fr; } }
+
+
+/* Comparaison Avant / Après */
+.compare-btn { display: inline-flex; align-items: center; gap: 6px; }
+.compare-btn svg { width: 16px; height: 16px; }
+.compare-btn.active { background: var(--accent-color); color: #fff; }
+.compare-labels { position: absolute; inset: 0; pointer-events: none; }
+.compare-labels.hidden { display: none; }
+.compare-label {
+    position: absolute;
+    top: 10px;
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #fff;
+    background: rgba(0, 0, 0, 0.62);
+}
+.compare-before { left: 10px; }
+.compare-after { right: 10px; }
+
+/* Aides et panneaux */
+.panel-hint, .layers-hint {
+    font-size: 11px;
+    line-height: 1.45;
+    color: var(--text-muted);
+    margin: 0 0 10px;
+}
+.layers-hint { margin: -6px 0 10px; }
+#btn-layer-merge { width: 100%; margin-bottom: 14px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.btn-icon { width: 16px; height: 16px; flex-shrink: 0; }
+.modal-close-btn svg { width: 16px; height: 16px; display: block; }
+.crop-toolbar .btn { display: inline-flex; align-items: center; gap: 6px; }
+
+/* Liste des raccourcis */
+.shortcuts .shortcut-row { display: flex; align-items: center; gap: 10px; }
+.shortcuts .shortcut-keys { display: inline-flex; gap: 3px; min-width: 96px; flex-shrink: 0; }

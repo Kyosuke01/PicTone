@@ -16,9 +16,18 @@ const doc = {
     globals: defaultSettings(), // réglages de l'image entière (appliqués après fusion des calques)
 };
 
+const MAX_PREVIEW = 2048;   // taille maximale du rendu à l'écran et de l'image « avant » (au-delà, on réduit)
+
 let layerSeq = 0;       // identifiants de calques
 let versionSeq = 0;     // versions de pixels (unique à chaque modification)
 let target = 'image';   // cible des réglages du panneau Filtres : 'image' | 'layer'
+
+// Sélection de calques (interface seulement : hors historique). Le calque actif en fait toujours partie.
+let selectedIds = new Set();
+let selectionAnchor = null;   // point de départ des sélections avec Maj
+
+// Image telle qu'ouverte (réduite à MAX_PREVIEW), pour la comparaison Avant / Après.
+let originalCanvas = null;
 
 // Appelé à chaque changement (rendu et interface). Défini par ui.js.
 let onDocChanged = () => {};
@@ -37,6 +46,12 @@ function activeLayer() {
 
 function activeIndex() {
     return doc.layers.indexOf(activeLayer());
+}
+
+// Dimensions du rendu à l'écran : la taille du document, réduite si elle dépasse MAX_PREVIEW.
+function previewDims(w, h) {
+    const k = Math.min(1, MAX_PREVIEW / Math.max(w, h));
+    return { w: Math.max(1, Math.round(w * k)), h: Math.max(1, Math.round(h * k)) };
 }
 
 // Réglages actuellement édités dans le panneau Filtres.
@@ -151,6 +166,7 @@ function restore(snap) {
     doc.h = snap.h;
     doc.activeId = snap.activeId;
     doc.globals = cloneSettings(snap.globals);
+    selectedIds.clear();
     doc.layers = snap.layers.map((sl) => {
         frozenPixels.set(sl.id, { version: sl.version, canvas: sl.canvas });
         return {
@@ -163,10 +179,12 @@ function restore(snap) {
             canvas: cloneCanvas(sl.canvas),
         };
     });
+    syncSelection();
 }
 
 // Enregistre l'état courant dans l'historique (après une modification).
 function commit() {
+    syncSelection();
     history = history.slice(0, historyIdx + 1);
     history.push(snapshot());
     if (history.length > MAX_HISTORY) {
@@ -214,7 +232,11 @@ function setDocument({ w, h, name, layers, activeId, globals, saved = false }) {
     doc.layers = layers;
     doc.activeId = activeId ?? layers[layers.length - 1].id;
     doc.globals = globals ? cloneSettings(globals) : defaultSettings();
+    selectedIds.clear();
+    syncSelection();
     resetHistory(saved);
+    const p = previewDims(w, h);
+    originalCanvas = renderComposite(p.w, p.h, true);
     onDocChanged();
 }
 
@@ -228,6 +250,9 @@ function clearDocument() {
     historyIdx = -1;
     savedIdx = -1;
     frozenPixels.clear();
+    selectedIds.clear();
+    selectionAnchor = null;
+    originalCanvas = null;
     onDocChanged();
 }
 
@@ -235,9 +260,59 @@ function clearDocument() {
 // Opérations sur les calques
 // ---------------------------------------------------------------------------
 
-function selectLayer(id) {
-    if (!layerById(id)) return;
-    doc.activeId = id;
+// Remet la sélection d'accord avec les calques existants : le calque actif en fait toujours partie.
+function syncSelection() {
+    const ids = new Set(doc.layers.map((l) => l.id));
+    for (const id of [...selectedIds]) if (!ids.has(id)) selectedIds.delete(id);
+    const active = activeLayer();
+    if (!active) { selectedIds.clear(); selectionAnchor = null; return; }
+    doc.activeId = active.id;
+    selectedIds.add(active.id);
+    if (!ids.has(selectionAnchor)) selectionAnchor = active.id;
+}
+
+// Calques sélectionnés, du fond vers le dessus.
+function selectedLayers() {
+    return doc.layers.filter((l) => selectedIds.has(l.id));
+}
+
+// Sélection d'un calque :
+//  - clic simple : ce calque seul ;
+//  - Maj + clic (range) : tous les calques entre le point de départ et celui-ci ;
+//  - ⌘ / Ctrl + clic (toggle) : ajoute ou retire ce calque, un par un.
+function selectLayer(id, { range = false, toggle = false } = {}) {
+    const layer = layerById(id);
+    if (!layer) return;
+    if (range) {
+        const from = doc.layers.findIndex((l) => l.id === (layerById(selectionAnchor) ? selectionAnchor : doc.activeId));
+        const to = doc.layers.indexOf(layer);
+        const [lo, hi] = from < 0 ? [to, to] : [Math.min(from, to), Math.max(from, to)];
+        selectedIds = new Set(doc.layers.slice(lo, hi + 1).map((l) => l.id));
+        doc.activeId = id;
+    } else if (toggle) {
+        if (selectedIds.has(id) && selectedIds.size > 1) {
+            selectedIds.delete(id);
+            if (doc.activeId === id) {
+                const rest = selectedLayers();
+                doc.activeId = rest[rest.length - 1].id;
+            }
+        } else {
+            selectedIds.add(id);
+            doc.activeId = id;
+        }
+        selectionAnchor = id;
+    } else {
+        selectedIds = new Set([id]);
+        selectionAnchor = id;
+        doc.activeId = id;
+    }
+    syncSelection();
+    onDocChanged();
+}
+
+function selectAllLayers() {
+    if (!hasDoc()) return;
+    selectedIds = new Set(doc.layers.map((l) => l.id));
     onDocChanged();
 }
 
@@ -248,6 +323,7 @@ function addLayer(canvas, name) {
     touch(layer);
     doc.layers.splice(activeIndex() + 1, 0, layer);
     doc.activeId = layer.id;
+    selectedIds.clear();
     commit();
     return layer;
 }
@@ -261,15 +337,21 @@ function duplicateLayer() {
     touch(copy);
     doc.layers.splice(activeIndex() + 1, 0, copy);
     doc.activeId = copy.id;
+    selectedIds.clear();
     commit();
 }
 
-function deleteLayer() {
-    if (doc.layers.length <= 1) return;
-    const idx = activeIndex();
-    doc.layers.splice(idx, 1);
-    doc.activeId = doc.layers[Math.max(0, idx - 1)].id;
+// Supprime les calques sélectionnés. Il doit en rester au moins un : sinon rien n'est supprimé.
+// Renvoie le nombre de calques supprimés.
+function deleteSelectedLayers() {
+    const doomed = selectedLayers();
+    if (!doomed.length || doomed.length >= doc.layers.length) return 0;
+    const lowest = doc.layers.indexOf(doomed[0]);
+    doc.layers = doc.layers.filter((l) => !selectedIds.has(l.id));
+    doc.activeId = doc.layers[Math.max(0, Math.min(lowest - 1, doc.layers.length - 1))].id;
+    selectedIds.clear();
     commit();
+    return doomed.length;
 }
 
 // delta = -1 (descendre) ou +1 (monter), dans la pile des calques.
@@ -282,20 +364,34 @@ function moveLayer(delta) {
     commit();
 }
 
-// Fusionne le calque actif dans celui du dessous (avec ses réglages et son opacité).
-function mergeDown() {
-    const idx = activeIndex();
-    if (idx <= 0) return;
-    const top = doc.layers[idx];
-    const below = doc.layers[idx - 1];
-    const ctx = below.canvas.getContext('2d');
-    ctx.globalAlpha = top.opacity;
-    ctx.drawImage(renderLayer(top, doc.w, doc.h), 0, 0);
+// Calques sélectionnés et visibles : ceux que « Fusionner » rassemble (les masqués restent intacts).
+function mergeableLayers() {
+    return selectedLayers().filter((l) => l.visible);
+}
+
+// Fusionne les calques sélectionnés (visibles) en un seul, avec leurs réglages et leur opacité.
+// Le résultat prend la place et le nom du calque le plus haut. Renvoie le nombre de calques fusionnés.
+function mergeSelectedLayers() {
+    const parts = mergeableLayers();
+    if (parts.length < 2) return 0;
+    const out = blankCanvas(doc.w, doc.h);
+    const ctx = out.getContext('2d');
+    for (const l of parts) {
+        ctx.globalAlpha = l.opacity;
+        ctx.drawImage(renderLayer(l, doc.w, doc.h), 0, 0);
+    }
     ctx.globalAlpha = 1;
-    touch(below);
-    doc.layers.splice(idx, 1);
-    doc.activeId = below.id;
+    const top = parts[parts.length - 1];
+    const merged = makeLayer(top.name, out);
+    touch(merged);
+    const topIdx = doc.layers.indexOf(top);
+    const drop = new Set(parts.map((l) => l.id));
+    doc.layers.splice(topIdx, 1, merged);
+    doc.layers = doc.layers.filter((l) => l === merged || !drop.has(l.id));
+    doc.activeId = merged.id;
+    selectedIds.clear();
     commit();
+    return parts.length;
 }
 
 // Une seule couche : les calques visibles sont fusionnés (les masqués sont abandonnés).
@@ -307,6 +403,7 @@ function flattenLayers() {
     touch(layer);
     doc.layers = [layer];
     doc.activeId = layer.id;
+    selectedIds.clear();
     commit();
     return visible.length;
 }

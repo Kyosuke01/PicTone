@@ -100,12 +100,62 @@ async fn tokio_sleep(ms: u64) {
     let _ = tauri::async_runtime::spawn_blocking(move || std::thread::sleep(std::time::Duration::from_millis(ms))).await;
 }
 
+/// Type MIME d'un fichier ouvrable, d'après son extension (vide si l'extension est inconnue).
+fn mime_for_extension(ext: &str) -> &'static str {
+    match ext.to_lowercase().as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "bmp" => "image/bmp",
+        "webp" => "image/webp",
+        "gif" => "image/gif",
+        "pictone" => "application/json",
+        _ => "",
+    }
+}
+
+/// Extensions proposées par la boîte d'enregistrement : « jpg » et « jpeg » vont ensemble.
+fn save_extensions(ext: &str) -> Vec<String> {
+    match ext {
+        "jpg" | "jpeg" => vec!["jpg".into(), "jpeg".into()],
+        other => vec![other.into()],
+    }
+}
+
+/// Extension (en minuscules) d'un nom de fichier, « png » par défaut.
+fn extension_of(filename: &str) -> String {
+    filename.rsplit_once('.').map(|(_, e)| e.to_lowercase()).unwrap_or_else(|| "png".into())
+}
+
+/// Boîte native « Ouvrir ». mode = « open » (image ou projet .pictone) ou « layer » (image seulement).
+/// Renvoie {name, mime, data_url}, ou None si l'utilisateur annule.
+#[tauri::command]
+async fn pick_file(app: AppHandle, mode: String) -> Result<Option<Value>, String> {
+    let mut dialog = app.dialog().file();
+    dialog = if mode == "layer" {
+        dialog.add_filter("Images", &["png", "jpg", "jpeg", "bmp", "webp", "gif"])
+    } else {
+        dialog
+            .add_filter("Images et projets PicTone", &["png", "jpg", "jpeg", "bmp", "webp", "gif", "pictone"])
+            .add_filter("Projet PicTone", &["pictone"])
+            .add_filter("Images", &["png", "jpg", "jpeg", "bmp", "webp", "gif"])
+    };
+    let Some(picked) = dialog.blocking_pick_file() else { return Ok(None) };
+    let path = picked.into_path().map_err(|e| e.to_string())?;
+    let bytes = std::fs::read(&path).map_err(|e| {
+        log_error(&format!("Ouverture : lecture de {} impossible : {e}", path.display()));
+        format!("Lecture impossible : {e}")
+    })?;
+    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "image".into());
+    let mime = mime_for_extension(&extension_of(&name));
+    let data_url = format!("data:{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes));
+    Ok(Some(json!({"name": name, "mime": mime, "data_url": data_url})))
+}
+
 /// Ouvre toujours la boîte « Enregistrer sous » : une image n'est jamais écrasée sans choix explicite.
 /// Renvoie false si l'utilisateur annule ou en cas d'erreur.
 #[tauri::command]
 async fn save_file(app: AppHandle, data_url: String, filename: String) -> Result<bool, ()> {
-    let ext = filename.rsplit_once('.').map(|(_, e)| e.to_lowercase()).unwrap_or_else(|| "png".into());
-    let ext = if ext == "jpg" { "jpeg".to_string() } else { ext };
+    let ext = extension_of(&filename);
     let Some((_, encoded)) = data_url.split_once(',') else {
         log_error("Enregistrement : data URL invalide.");
         return Ok(false);
@@ -121,7 +171,7 @@ async fn save_file(app: AppHandle, data_url: String, filename: String) -> Result
         .dialog()
         .file()
         .set_file_name(&filename)
-        .add_filter(format!("Fichier {}", ext.to_uppercase()), &[ext.as_str()])
+        .add_filter(format!("Fichier {}", ext.to_uppercase()), &save_extensions(&ext).iter().map(String::as_str).collect::<Vec<_>>())
         .blocking_save_file();
     let Some(picked) = picked else { return Ok(false) }; // annulé
     let Ok(path) = picked.into_path() else { return Ok(false) };
@@ -196,7 +246,7 @@ pub fn run() {
             send_command(app, event.id().as_ref());
         })
         .invoke_handler(tauri::generate_handler![
-            get_version, log_js, check_update, set_command_states, install_update, save_file, quit_app, read_clipboard_image
+            get_version, log_js, check_update, set_command_states, install_update, save_file, pick_file, quit_app, read_clipboard_image
         ])
         .build(tauri::generate_context!());
     let result = result.map(|app| {
@@ -222,6 +272,29 @@ mod tests {
     #[test]
     fn la_version_est_lisible() {
         assert!(crate::updater::parse_version(crate::logging::version()).is_some());
+    }
+
+    #[test]
+    fn types_mime_des_fichiers_ouvrables() {
+        assert_eq!(crate::mime_for_extension("PNG"), "image/png");
+        assert_eq!(crate::mime_for_extension("jpg"), "image/jpeg");
+        assert_eq!(crate::mime_for_extension("jpeg"), "image/jpeg");
+        assert_eq!(crate::mime_for_extension("pictone"), "application/json");
+        assert_eq!(crate::mime_for_extension("txt"), "");
+    }
+
+    #[test]
+    fn extension_du_nom_de_fichier() {
+        assert_eq!(crate::extension_of("photo.JPG"), "jpg");
+        assert_eq!(crate::extension_of("mon.projet.pictone"), "pictone");
+        assert_eq!(crate::extension_of("sans-extension"), "png");
+    }
+
+    #[test]
+    fn la_boite_d_enregistrement_accepte_jpg_et_jpeg() {
+        assert_eq!(crate::save_extensions("jpg"), vec!["jpg", "jpeg"]);
+        assert_eq!(crate::save_extensions("jpeg"), vec!["jpg", "jpeg"]);
+        assert_eq!(crate::save_extensions("pictone"), vec!["pictone"]);
     }
 
     /// version.txt, Cargo.toml et package.json doivent rester alignés.
